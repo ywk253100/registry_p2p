@@ -5,13 +5,12 @@ import (
 	"fmt"
 	docker "github.com/fsouza/go-dockerclient"
 	"net"
-	"net/http"
 	"os"
-	"p2p_lib"
-	"p2p_lib/bittorrent"
-	sch "p2p_lib/manager/scheduler"
-	"p2p_lib/utils"
 	"path/filepath"
+	p2p "registry_p2p"
+	"registry_p2p/bittorrent"
+	sch "registry_p2p/manager/scheduler"
+	"registry_p2p/utils"
 	"sync"
 )
 
@@ -164,43 +163,50 @@ func initWorkspace(path string) (err error) {
 
 func (m *Manager) ImageTarExist(id string) (exist bool, path string, err error) {
 	path = filepath.Join(m.DataDir, "image", id+".tar")
-	exist, err = util.FileExist(path)
+	exist, err = utils.FileExist(path)
 	return
 }
 
-func (m *Manager) PackageExist(id string, mode string) (exist bool, path string, err error) {
-	if mode == p2p_lib.ImageMode {
+func (m *Manager) PackageExist(id string, typee string) (exist bool, path string, err error) {
+	switch typee {
+	case "image":
 		path = filepath.Join(m.DataDir, "package", "image_"+id+".tar.gz")
-	} else {
+	case "layer":
 		path = filepath.Join(m.DataDir, "package", "layer_"+id+".tar.gz")
+	case "metadata":
+		path = filepath.Join(m.DataDir, "package", "metadata_"+id+".tar.gz")
 	}
-	exist, err = util.FileExist(path)
+	exist, err = utils.FileExist(path)
+
 	return
 }
 
-func (m *Manager) TorrentExist(id string, mode string) (exist bool, path string, err error) {
-	if mode == p2p_lib.ImageMode {
-		path = filepath.Join(m.DataDir, "torrent", "image_"+id+".torrent")
-	} else {
-		path = filepath.Join(m.DataDir, "torrent", "layer_"+id+".torrent")
+func (m *Manager) TorrentExist(id string, typee string) (exist bool, path string, err error) {
+	switch typee {
+	case "image":
+		path = filepath.Join(m.DataDir, "package", "image_"+id+".torrent")
+	case "layer":
+		path = filepath.Join(m.DataDir, "package", "layer_"+id+".torrent")
+	case "metadata":
+		path = filepath.Join(m.DataDir, "package", "metadata_"+id+".torrent")
 	}
-	exist, err = util.FileExist(path)
+	exist, err = utils.FileExist(path)
 	return
 }
 
 func (m *Manager) TaskExist(id string, mode string) (exist bool, path string, err error) {
-	if mode == p2p_lib.ImageMode {
+	if mode == p2p.ImageMode {
 		path = filepath.Join(m.DataDir, "task", "image", id+".torrent")
 	} else {
 		path = filepath.Join(m.DataDir, "task", "layer", id+".tar.gz")
 	}
-	exist, err = util.FileExist(path)
+	exist, err = utils.FileExist(path)
 
 	return
 }
 
 func (m *Manager) MetadataExist(id string) (exist bool, path string, err error) {
 	path = filepath.Join(m.DataDir, "metadata", id)
-	exist, err = util.FileExist(path)
+	exist, err = utils.FileExist(path)
 	return
 }

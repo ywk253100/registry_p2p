@@ -1,7 +1,7 @@
 package p2p_lib
 
 import (
-	"p2p_lib/bittorrent"
+	"registry_p2p/bittorrent"
 )
 
 func Download(client bittorrent.BitTorrent, torrents, configs map[string]string) (err error) {

@@ -2,76 +2,271 @@ package manager
 
 import (
 	"archive/tar"
-	"bytes"
 	"compress/gzip"
-	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"os"
-	"p2p_lib"
-	"p2p_lib/util"
 	"path/filepath"
+	p2p "registry_p2p"
 	"strings"
+
+	docker "github.com/fsouza/go-dockerclient"
 )
+
+type Item struct {
+	ID   string
+	Type string
+}
 
 type tagId map[string]string
 type repositories map[string]tagId
 
-func Pull(mg *Manager, task *Task) (err error) {
-
-}
-
-func Save(mg *Manager, task *Task) (r io.Reader, err error) {
-
-}
-
-func UnTar(r io.Reader) (err error) {
-
-}
-
-func Compress(r io.Reader) (err error) {
-
-}
-
-func MakeTorrent() (err error) {
-
-}
-
-func Prepare(manager *Manager, task *DistributionTask) (err error) {
-	defer func() {
-		if err != nil {
-			//TODO process auth error
-			fmt.Errorf("prepare error: %s", err.Error())
-		}
-	}()
-
-	task.Client.Write("pulling image")
-
-	log.Printf("++++pull: %s", task.ImageName)
-	if err = p2p_lib.PullImage(manager.DockerClient, task.ImageName, task.Username, task.Password, task.Email); err != nil {
+func Prepare(mg *Manager, task *Task) (err error) {
+	task.State = "pulling"
+	if err = Pull(mg.DockerClient, task.ImageName, task.Username, task.Password, task.Email); err != nil {
 		return
 	}
-	log.Printf("--------pull: %s", task.ImageName)
 
-	id, err := p2p_lib.GetImageIDByImageName(manager.DockerClient, task.ImageName)
+	id, err := p2p.GetImageIDByImageName(mg.DockerClient, task.ImageName)
 	if err != nil {
 		return
 	}
 
 	task.ImageID = id
-	task.PD.ImageID = id
 
-	if task.Mode == p2p_lib.ImageMode {
-		err = prepareImageMode(manager, task)
+	var items []*Item
+
+	if task.Mode == "image" {
+		items = append(items, &Item{
+			ID:   task.ImageID,
+			Type: "image",
+		})
 	} else {
-		err = prepareLayerMode(manager, task)
+		ids, err := p2p.GetLayerIDs(mg.DockerClient, task.ImageName)
+		if err != nil {
+			return err
+		}
+		for _, id := range ids {
+			items = append(items, &Item{
+				ID:   id,
+				Type: "layer",
+			})
+		}
+		items = append(items, &Item{
+			ID:   task.ImageID,
+			Type: "metadata",
+		})
+	}
+
+	for _, item := range items {
+		packageExist, packagePath, err := mg.PackageExist(item.ID, item.Type)
+		if err != nil {
+			return err
+		}
+		if !packageExist {
+			imageTarExist, imageTarPath, err := mg.ImageTarExist(task.ImageID)
+			if err != nil {
+				return err
+			}
+			var imageTarFile *os.File
+			if !imageTarExist {
+				imageTarFile, err = os.Create(imageTarPath)
+				if err != nil {
+					return err
+				}
+				defer imageTarFile.Close()
+				if err = Save(mg.DockerClient, task.ImageName, imageTarFile); err != nil {
+					return err
+				}
+				if _, err = imageTarFile.Seek(0, 0); err != nil {
+					return err
+				}
+			} else {
+				imageTarFile, err = os.Open(imageTarPath)
+				if err != nil {
+					return err
+				}
+				defer imageTarFile.Close()
+			}
+
+			if item.Type == "image" {
+				packageFile, err := os.Create(packagePath)
+				if err != nil {
+					return err
+				}
+				defer packageFile.Close()
+				if err = TarCompress(imageTarFile, packageFile, item.Type); err != nil {
+					return err
+				}
+			} else {
+				tr := tar.NewReader(imageTarFile)
+				for {
+					header, err := tr.Next()
+					if err != nil {
+						if err == io.EOF {
+							break
+						}
+						return err
+					}
+
+					switch header.Typeflag {
+					case tar.TypeDir:
+						id := strings.TrimRight(header.Name, string(filepath.Separator))
+						//TODO pool
+						packageExist, packagePath, err := mg.PackageExist(id, "layer")
+						if err != nil {
+							return err
+						}
+						if packageExist {
+							continue
+						}
+
+						packageFile, err := os.Create(packagePath)
+						if err != nil {
+							return err
+						}
+						defer packageFile.Close()
+
+						if err = TarCompress(tr, packageFile, "layer"); err != nil {
+							return err
+						}
+
+					case tar.TypeReg:
+						if header.Name == "repositories" {
+							packageExist, packagePath, err := mg.PackageExist(task.ImageID, "metadata")
+							if err != nil {
+								return err
+							}
+							if packageExist {
+								continue
+							}
+
+							packageFile, err := os.Create(packagePath)
+							if err != nil {
+								return err
+							}
+							defer packageFile.Close()
+
+							if err = TarCompress(tr, packageFile, "metadata"); err != nil {
+								return err
+							}
+						}
+
+					default:
+						return fmt.Errorf("unsupported type flag")
+					}
+				}
+			}
+		}
 	}
 
 	return
 }
 
-func prepareImageMode(manager *Manager, task *DistributionTask) (err error) {
+func Pull(client *docker.Client, image, username, password, email string) (err error) {
+	if err = p2p.PullImage(client, image, username, password, email); err != nil {
+		return
+	}
+	return
+}
+
+func Save(client *docker.Client, image string, w io.Writer) (err error) {
+	if err = p2p.SaveImage(client, image, w); err != nil {
+		return err
+	}
+	return
+}
+
+func UnTar(r io.Reader) (err error) {
+	return
+}
+
+func TarCompress(r io.Reader, w io.Writer, typee string) (err error) {
+	gw := gzip.NewWriter(w)
+	defer gw.Close()
+	switch typee {
+	case "image":
+		if _, err = io.Copy(gw, r); err != nil {
+			return
+		}
+		return
+	case "layer":
+		tw := tar.NewWriter(gw)
+		defer tw.Close()
+		tr, _ := tar.Reader.(r)
+
+		for i := 0; i < 3; i++ {
+			header, err := tr.Next()
+			if err != nil {
+				return err
+			}
+			if err = tw.WriteHeader(header); err != nil {
+				return err
+			}
+			if _, err = io.Copy(tw, tr); err != nil {
+				return err
+			}
+		}
+	case "metadata":
+		tw := tar.NewWriter(gw)
+		defer tw.Close()
+		tr := tar.Reader(r)
+		header, err := tr.Next()
+		if err != nil {
+			return err
+		}
+		if err = tw.WriteHeader(header); err != nil {
+			return err
+		}
+		if _, err = io.Copy(tw, tarReader); err != nil {
+			return err
+		}
+	default:
+		return fmt.Errorf("unsupported type: %s", typee)
+	}
+
+	return
+}
+
+func MakeTorrent() (err error) {
+	return
+}
+
+//func Prepare(manager *Manager, task *Task) (err error) {
+//	defer func() {
+//		if err != nil {
+//			//TODO process auth error
+//			fmt.Errorf("prepare error: %s", err.Error())
+//		}
+//	}()
+
+//	task.Client.Write("pulling image")
+
+//	log.Printf("++++pull: %s", task.ImageName)
+//	if err = p2p_lib.PullImage(manager.DockerClient, task.ImageName, task.Username, task.Password, task.Email); err != nil {
+//		return
+//	}
+//	log.Printf("--------pull: %s", task.ImageName)
+
+//	id, err := p2p_lib.GetImageIDByImageName(manager.DockerClient, task.ImageName)
+//	if err != nil {
+//		return
+//	}
+
+//	task.ImageID = id
+//	task.PD.ImageID = id
+
+//	if task.Mode == p2p_lib.ImageMode {
+//		err = prepareImageMode(manager, task)
+//	} else {
+//		err = prepareLayerMode(manager, task)
+//	}
+
+//	return
+//}
+
+/*
+func prepareImageMode(manager *Manager, task *Task) (err error) {
 	packageExist, packagePath, err := manager.PackageExist(task.ImageID, task.Mode)
 	if err != nil {
 		return
@@ -87,7 +282,7 @@ func prepareImageMode(manager *Manager, task *DistributionTask) (err error) {
 
 		if !imageTarExist {
 			log.Printf("++++export: %s %s", task.ImageName, imageTarPath)
-			if err = p2p_lib.SaveImage(manager.DockerClient, task.ImageName, imageTarPath); err != nil {
+			if err = p2p.SaveImage(manager.DockerClient, task.ImageName, imageTarPath); err != nil {
 				return err
 			}
 			log.Printf("--------export: %s %s", task.ImageName, imageTarPath)
@@ -95,7 +290,7 @@ func prepareImageMode(manager *Manager, task *DistributionTask) (err error) {
 			log.Printf("skip export: %s %s", task.ImageName, imageTarPath)
 		}
 
-		if err = util.Gzip(imageTarPath, packagePath); err != nil {
+		if err = utils.Gzip(imageTarPath, packagePath); err != nil {
 			return err
 		}
 		log.Printf("--------compress: %s %s", task.ImageName, packagePath)
@@ -144,7 +339,7 @@ func prepareImageMode(manager *Manager, task *DistributionTask) (err error) {
 }
 
 //TODO v1 v2
-func prepareLayerMode(manager *Manager, task *DistributionTask) (err error) {
+func prepareLayerMode(manager *Manager, task *Task) (err error) {
 	imageTarExist, imageTarPath, err := manager.ImageTarExist(task.ImageID)
 	if err != nil {
 		return
@@ -204,6 +399,7 @@ func prepareLayerMode(manager *Manager, task *DistributionTask) (err error) {
 				tw := tar.NewWriter(gw)
 
 				for i := 0; i < 3; i++ {
+					tarReader.
 					header, err = tarReader.Next()
 					if err != nil {
 						return err
@@ -354,3 +550,4 @@ func prepareLayerMode(manager *Manager, task *DistributionTask) (err error) {
 
 	return
 }
+*/

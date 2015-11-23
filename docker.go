@@ -1,6 +1,7 @@
 package p2p_lib
 
 import (
+	"io"
 	"fmt"
 	docker "github.com/fsouza/go-dockerclient"
 	"log"
@@ -26,21 +27,14 @@ func PullImage(client *docker.Client, image, username, password, email string) e
 	return nil
 }
 
-func SaveImage(client *docker.Client, image, path string) (err error) {
-	f, err := os.Create(path)
-	if err != nil {
-		return
-	}
-	defer f.Close()
-
+func SaveImage(client *docker.Client, image string, w io.Writer) (err error) {
 	opts := docker.ExportImageOptions{
 		Name:         image,
-		OutputStream: f,
+		OutputStream: w,
 	}
 	if err := client.ExportImage(opts); err != nil {
 		return err
 	}
-
 	return nil
 }
 
@@ -90,4 +84,15 @@ func ImageExist(client *docker.Client, name, id string) (ex bool, err error) {
 	}
 
 	return image.ID == id, nil
+}
+
+func GetLayerIDs(client *docker.Client, name string)(ids []string, err error){
+	histories, err := client.ImageHistory(name)
+	if err != nil{
+		return
+	}
+	for _, history := range histories{
+		ids = append(ids,history.ID)
+	}
+	return
 }
