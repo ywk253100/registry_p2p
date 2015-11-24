@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	p2p "registry_p2p"
+	"registry_p2p/bittorrent"
 	"strings"
 
 	docker "github.com/fsouza/go-dockerclient"
@@ -197,16 +198,16 @@ func Prepare(mg *Manager, task *Task) (err error) {
 				break
 			}
 		}
-	}
 
-	for _, item := range items {
 		torrentExist, torrentPath, err := mg.TorrentExist(item.ID, item.Type)
 		if err != nil {
 			return err
 		}
 
 		if !torrentExist {
-			//make torrent
+			if err = CreateTorrent(mg.BTClient, packagePath, torrentPath, mg.Trackers); err != nil {
+				return err
+			}
 		}
 	}
 
@@ -296,7 +297,10 @@ func TarCompress(r io.Reader, w io.Writer, typee string) (err error) {
 	return
 }
 
-func MakeTorrent() (err error) {
+func CreateTorrent(bt bittorrent.BitTorrent, path, torrentPath string, trackers []string) (err error) {
+	if bt.CreateTorrent(path, torrentPath, trackers); err != nil {
+		return
+	}
 	return
 }
 
