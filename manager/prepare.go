@@ -22,6 +22,17 @@ type tagId map[string]string
 type repositories map[string]tagId
 
 func Prepare(mg *Manager, task *Task) (err error) {
+	kind := task.Mode
+	c, err := mg.PoolAdd(kind + "_" + task.ImageName)
+	if err != nil {
+		if c != nil {
+			<-c
+			goto goon1
+		} else {
+			return err
+		}
+	}
+
 	task.State = "pulling"
 	if err = Pull(mg.DockerClient, task.ImageName, task.Username, task.Password, task.Email); err != nil {
 		return
@@ -112,7 +123,17 @@ func Prepare(mg *Manager, task *Task) (err error) {
 					switch header.Typeflag {
 					case tar.TypeDir:
 						id := strings.TrimRight(header.Name, string(filepath.Separator))
-						//TODO pool
+
+						c, err := mg.PoolAdd("layer_" + id)
+						if err != nil {
+							if c != nil {
+								<-c
+								continue
+							} else {
+								return err
+							}
+						}
+
 						packageExist, packagePath, err := mg.PackageExist(id, "layer")
 						if err != nil {
 							return err
@@ -131,8 +152,22 @@ func Prepare(mg *Manager, task *Task) (err error) {
 							return err
 						}
 
+						if err = mg.PoolDelete("metadata_" + id); err != nil {
+							return err
+						}
+
 					case tar.TypeReg:
 						if header.Name == "repositories" {
+							c, err := mg.PoolAdd("layer_" + id)
+							if err != nil {
+								if c != nil {
+									<-c
+									continue
+								} else {
+									return err
+								}
+							}
+
 							packageExist, packagePath, err := mg.PackageExist(task.ImageID, "metadata")
 							if err != nil {
 								return err
@@ -150,6 +185,9 @@ func Prepare(mg *Manager, task *Task) (err error) {
 							if err = TarCompress(tr, packageFile, "metadata"); err != nil {
 								return err
 							}
+							if err = mg.PoolDelete("metadata_" + id); err != nil {
+								return err
+							}
 						}
 
 					default:
@@ -159,6 +197,39 @@ func Prepare(mg *Manager, task *Task) (err error) {
 				break
 			}
 		}
+	}
+
+	for _, item := range items {
+		torrentExist, torrentPath, err := mg.TorrentExist(item.ID, item.Type)
+		if err != nil {
+			return err
+		}
+
+		if !torrentExist {
+			//make torrent
+		}
+	}
+
+	if err = mg.PoolDelete(kind + "_" + id); err != nil {
+		return err
+	}
+
+goon1:
+	var agts []*AgentTaskItem
+
+	for _, item := range items {
+		ati := &AgentTaskItem{
+			Type: item.Type,
+			URL:  mg.FileServerPrefix + item.Type + "_" + item.ID + ".torrent",
+		}
+		agts = append(agts, ati)
+	}
+
+	for _, host := range task.Hosts {
+		task.AgentTasks = append(task.AgentTasks, &AgentTask{
+			ID:    host,
+			Items: agts,
+		})
 	}
 
 	return
@@ -175,10 +246,6 @@ func Save(client *docker.Client, image string, w io.Writer) (err error) {
 	if err = p2p.SaveImage(client, image, w); err != nil {
 		return err
 	}
-	return
-}
-
-func UnTar(r io.Reader) (err error) {
 	return
 }
 

@@ -26,6 +26,8 @@ type Manager struct {
 	Scheduler sch.Scheduler
 
 	FileServerPrefix string
+
+	TaskPool map[string]chan struct{}
 }
 
 type Task struct {
@@ -42,8 +44,6 @@ type Task struct {
 
 	State      string
 	AgentTasks []*AgentTask
-
-	TaskPool map[string]chan struct{}
 
 	Writer *utils.FlushWriter
 }
@@ -210,5 +210,29 @@ func (m *Manager) TaskExist(id string, mode string) (exist bool, path string, er
 func (m *Manager) MetadataExist(id string) (exist bool, path string, err error) {
 	path = filepath.Join(m.DataDir, "metadata", id)
 	exist, err = utils.FileExist(path)
+	return
+}
+
+func (m *Manager) PoolAdd(key string) (c chan struct{}, err error) {
+	m.Lock()
+	defer m.Unlock()
+
+	if c, exists := m.TaskPool[key]; exists {
+		return c, errors.New("task is already in progress")
+	}
+
+	c = make(chan struct{})
+	m.TaskPool[key] = c
+	return
+}
+
+func (m *Manager) PoolDelete(key string) (err error) {
+	m.Lock()
+	defer m.Unlock()
+
+	if c, exists := m.TaskPool[key]; exists {
+		close(c)
+		delete(m.TaskPool, key)
+	}
 	return
 }
