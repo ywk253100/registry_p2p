@@ -43,6 +43,8 @@ type Task struct {
 	State      string
 	AgentTasks []*AgentTask
 
+	TaskPool map[string]chan struct{}
+
 	Writer *utils.FlushWriter
 }
 

@@ -156,6 +156,7 @@ func Prepare(mg *Manager, task *Task) (err error) {
 						return fmt.Errorf("unsupported type flag")
 					}
 				}
+				break
 			}
 		}
 	}
