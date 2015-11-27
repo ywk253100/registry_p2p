@@ -16,8 +16,8 @@ func NewFlushWriter(w io.Writer) *FlushWriter {
 	return f
 }
 
-func (f *FlushWriter) Write(b []byte) (n int, err error) {
-	n, err = f.W.Write(b)
+func (f *FlushWriter) Write(str string) (n int, err error) {
+	n, err = f.W.Write([]byte(str))
 	if err != nil {
 		return
 	}

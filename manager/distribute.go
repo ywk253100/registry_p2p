@@ -1,6 +1,6 @@
 package manager
 
-func Distribute(manager *Manager, task *DistributionTask) (err error) {
-	err = manager.Scheduler.Schedule(task.PD, task.Hosts)
+func Distribute(manager *Manager, task *Task) (err error) {
+	err = manager.Scheduler.Schedule(task.ImageID, task.ImageName, task.Mode, task.Items, task.Hosts)
 	return
 }

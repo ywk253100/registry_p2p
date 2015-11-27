@@ -6,6 +6,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	p2p "registry_p2p"
 	"strings"
 	"sync"
 )
@@ -22,8 +23,15 @@ func NewBatch() (batch *Batch) {
 	return
 }
 
-func (b *Batch) Schedule(pd *PostData, hosts []string) (err error) {
-	data, err := json.Marshal(pd)
+func (b *Batch) Schedule(imageID, imageName, mode string, items []*p2p.Item, hosts []string) (err error) {
+	image := &Image{
+		ID:    imageID,
+		Name:  imageName,
+		Mode:  mode,
+		Items: items,
+	}
+
+	data, err := json.Marshal(image)
 	if err != nil {
 		return
 	}
@@ -64,51 +72,6 @@ func post(url string, payload io.Reader, cond *sync.Cond, ratio int, ready chan 
 	}
 
 	u = u + "download"
-
-	//	var b bytes.Buffer
-	//	w := multipart.NewWriter(&b)
-
-	//	if err := w.WriteField("id", imageId); err != nil {
-	//		log.Printf("post to %s error: %s", url, err.Error())
-	//		return
-	//	}
-
-	//	if err := w.WriteField("name", imageName); err != nil {
-	//		log.Printf("post to %s error: %s", url, err.Error())
-	//		return
-	//	}
-
-	//	if err := w.WriteField("mode", mode); err != nil {
-	//		log.Printf("post to %s error: %s", url, err.Error())
-	//		return
-	//	}
-
-	//	ww, err := w.CreateFormField("torrent")
-	//	if err != nil {
-	//		log.Printf("post to %s error: %s", url, err.Error())
-	//		return
-	//	}
-
-	//	if _, err := io.Copy(ww, payload); err != nil {
-	//		log.Printf("post to %s error: %s", url, err.Error())
-	//		return
-	//	}
-
-	//	req, err := http.NewRequest("POST", u, &b)
-	//	if err != nil {
-	//		log.Printf("post to %s error: %s", url, err.Error())
-	//		return
-	//	}
-
-	//	req.Header.Set("Content-Type", w.FormDataContentType())
-
-	//	client := &http.Client{}
-
-	//	resp, err := client.Do(req)
-	//	if err != nil {
-	//		log.Printf("post to %s error: %s", url, err.Error())
-	//		return
-	//	}
 
 	resp, err := http.Post(url, "application/json", payload)
 	if err != nil {

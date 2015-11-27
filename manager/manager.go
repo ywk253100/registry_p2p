@@ -30,35 +30,6 @@ type Manager struct {
 	TaskPool map[string]chan struct{}
 }
 
-type Task struct {
-	ImageID string
-
-	ImageName string   `json:"image"`
-	Username  string   `json:"username"`
-	Password  string   `json:"password"`
-	Email     string   `json:"email"`
-	Mode      string   `json:"mode"`
-	Hosts     []string `json:"hosts"`
-
-	Owner string
-
-	State      string
-	AgentTasks []*AgentTask
-
-	Writer *utils.FlushWriter
-}
-
-type AgentTask struct {
-	ID    string //ip:port or hostname
-	State string
-	Items []*AgentTaskItem
-}
-
-type AgentTaskItem struct {
-	Type string //image, layer or metadata
-	URL  string
-}
-
 func NewManager(dataDir, port, dockerEndpoint, btClient, scheduler string, trackers []string) (manager *Manager, err error) {
 	if err = initWorkspace(dataDir); err != nil {
 		return
@@ -119,6 +90,7 @@ func NewManager(dataDir, port, dockerEndpoint, btClient, scheduler string, track
 		Scheduler:        s,
 		Trackers:         trackers,
 		FileServerPrefix: "http://" + ip + ":" + port + "/",
+		TaskPool:         make(map[string]chan struct{}),
 	}
 
 	return
@@ -186,11 +158,11 @@ func (m *Manager) PackageExist(id string, typee string) (exist bool, path string
 func (m *Manager) TorrentExist(id string, typee string) (exist bool, path string, err error) {
 	switch typee {
 	case "image":
-		path = filepath.Join(m.DataDir, "package", "image_"+id+".torrent")
+		path = filepath.Join(m.DataDir, "torrent", "image_"+id+".torrent")
 	case "layer":
-		path = filepath.Join(m.DataDir, "package", "layer_"+id+".torrent")
+		path = filepath.Join(m.DataDir, "torrent", "layer_"+id+".torrent")
 	case "metadata":
-		path = filepath.Join(m.DataDir, "package", "metadata_"+id+".torrent")
+		path = filepath.Join(m.DataDir, "torrent", "metadata_"+id+".torrent")
 	}
 	exist, err = utils.FileExist(path)
 	return
@@ -226,7 +198,7 @@ func (m *Manager) PoolAdd(key string) (c chan struct{}, err error) {
 	return
 }
 
-func (m *Manager) PoolDelete(key string) (err error) {
+func (m *Manager) PoolDelete(key string) {
 	m.Lock()
 	defer m.Unlock()
 

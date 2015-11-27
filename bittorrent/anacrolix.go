@@ -55,31 +55,18 @@ func (a *Anacrolix) CreateTorrent(path, torrentPath string, trackers []string) (
 	return
 }
 
-func (a *Anacrolix) Download(torrents, configs map[string]string) (err error) {
-	var ts []*torrent.Torrent
-	for _, torrentPath := range torrents {
-		t, err := a.Client.AddTorrentFromFile(torrentPath)
-		if err != nil {
-			return err
-		}
-		ts = append(ts, &t)
-		<-t.GotInfo()
-		t.DownloadAll()
+func (a *Anacrolix) Download(path, torrentPath string, configs map[string]string) (err error) {
+	t, err := a.Client.AddTorrentFromFile(torrentPath)
+	if err != nil {
+		return
 	}
+	<-t.GotInfo()
+	t.DownloadAll()
 
 	for {
-		allCompleted := true
-		for _, t := range ts {
-			if t.Length() != t.BytesCompleted() {
-				allCompleted = false
-				break
-			}
-		}
-
-		if allCompleted {
+		if t.Length() == t.BytesCompleted() {
 			break
 		}
-
 		time.Sleep(time.Second * 1)
 	}
 

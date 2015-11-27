@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"p2p_lib/manager"
+	"registry_p2p/manager"
 	"strings"
 )
 
@@ -30,7 +30,7 @@ func (t *trackers) Set(value string) error {
 
 func main() {
 	dataDir := flag.String("d", "/p2p/", "data directory")
-	listenAddr := flag.String("l", "0.0.0.0:8000", "listen-addr")
+	port := flag.String("p", "8000", "port")
 	dockerEndpoint := flag.String("e", "unix:///var/run/docker.sock", "docker daemon endpoint")
 	btClient := flag.String("b", "anacrolix", "bt client(anacrolix, ctorrent)")
 	scheduler := flag.String("s", "batch", "distribution scheduler")
@@ -41,14 +41,14 @@ func main() {
 	flag.Parse()
 
 	var err error
-	mg, err = manager.CreateManager(*dataDir, *listenAddr, *dockerEndpoint, *btClient, *scheduler, ts)
+	mg, err = manager.NewManager(*dataDir, *port, *dockerEndpoint, *btClient, *scheduler, ts)
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	registerHandler()
 
-	if err = http.ListenAndServe(*listenAddr, nil); err != nil {
+	if err = http.ListenAndServe(":"+*port, nil); err != nil {
 		log.Fatal(err)
 	}
 }

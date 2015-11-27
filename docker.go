@@ -1,9 +1,9 @@
-package p2p_lib
+package registry_p2p
 
 import (
-	"io"
 	"fmt"
 	docker "github.com/fsouza/go-dockerclient"
+	"io"
 	"log"
 	"os"
 )
@@ -86,13 +86,13 @@ func ImageExist(client *docker.Client, name, id string) (ex bool, err error) {
 	return image.ID == id, nil
 }
 
-func GetLayerIDs(client *docker.Client, name string)(ids []string, err error){
+func GetLayerIDs(client *docker.Client, name string) (ids []string, err error) {
 	histories, err := client.ImageHistory(name)
-	if err != nil{
+	if err != nil {
 		return
 	}
-	for _, history := range histories{
-		ids = append(ids,history.ID)
+	for _, history := range histories {
+		ids = append(ids, history.ID)
 	}
 	return
 }

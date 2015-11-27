@@ -2,9 +2,7 @@ package bittorrent
 
 import (
 	"fmt"
-	"log"
 	"os/exec"
-	"sync"
 )
 
 type Ctorrent struct {
@@ -26,51 +24,32 @@ func (c *Ctorrent) CreateTorrent(path, torrentPath string, trackers []string) (e
 	return
 }
 
-func (c *Ctorrent) Download(torrents, configs map[string]string) (err error) {
+func (c *Ctorrent) Download(path, torrentPath string, configs map[string]string) (err error) {
 	if configs["target"] == "manager" {
-		err = downloadForManager(torrents)
+		err = downloadForManager(path, torrentPath)
 	} else {
-		err = downloadForAgent(torrents)
+		err = downloadForAgent(path, torrentPath)
 	}
 
 	return
 }
 
-func downloadForManager(torrents map[string]string) (err error) {
-	for path, torrentPath := range torrents {
-		if err = btDownload(path, torrentPath, true, 1); err != nil {
-			return
-		}
+func downloadForManager(path, torrentPath string) (err error) {
+	if err = btDownload(path, torrentPath, true, 1); err != nil {
+		return
 	}
 
 	return
 }
 
-func downloadForAgent(torrents map[string]string) (err error) {
-	var wg sync.WaitGroup
-	wg.Add(len(torrents))
-
-	for path, torrentPath := range torrents {
-		go func(path, torrentPath string) {
-			defer wg.Done()
-
-			log.Printf("starting download %s", path)
-			if err = btDownload(path, torrentPath, false, 0); err != nil {
-				log.Printf("download %s error: %s", path, err.Error())
-				return
-			}
-			log.Printf("complete download %s", path)
-
-			log.Printf("seeding %s", path)
-			if err = btDownload(path, torrentPath, true, 1); err != nil {
-				log.Printf("seeding %s error: %s", path, err.Error())
-				return
-			}
-
-		}(path, torrentPath)
+func downloadForAgent(path, torrentPath string) (err error) {
+	if err = btDownload(path, torrentPath, false, 0); err != nil {
+		return
 	}
 
-	wg.Wait()
+	if err = btDownload(path, torrentPath, true, 1); err != nil {
+		return
+	}
 
 	return
 }

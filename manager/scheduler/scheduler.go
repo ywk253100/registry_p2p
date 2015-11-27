@@ -1,12 +1,16 @@
 package scheduler
 
-type PostData struct {
-	ImageID   string
-	ImageName string
-	Mode      string
-	URLs      []string
+import (
+	p2p "registry_p2p"
+)
+
+type Image struct {
+	ID    string
+	Name  string
+	Mode  string
+	Items []*p2p.Item
 }
 
 type Scheduler interface {
-	Schedule(pd *PostData, hosts []string) error
+	Schedule(imageID, imageName, mode string, items []*p2p.Item, hosts []string) error
 }
