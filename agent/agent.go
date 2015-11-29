@@ -1,32 +1,28 @@
 package agent
 
 import (
+	"errors"
 	"fmt"
 	docker "github.com/fsouza/go-dockerclient"
 	"os"
-	p2p "p2p_lib"
-	"p2p_lib/bittorrent"
-	"p2p_lib/util"
 	"path/filepath"
+	"registry_p2p/bittorrent"
+	"registry_p2p/utils"
+	"sync"
 )
 
 type Agent struct {
+	sync.Mutex
+
 	DataDir      string
-	ListenAddr   string
+	Port         string
 	DockerClient *docker.Client
 	BTClient     bittorrent.BitTorrent
+
+	TaskPool map[string]chan struct{}
 }
 
-type DownloadTask struct {
-	ImageName    string
-	ImageID      string
-	TmpDir       string
-	ImageTarPath string
-	Torrents     map[string]string
-	Mode         string
-}
-
-func CreateAgent(dataDir, listenAddr, dockerEndpoint, btClient string) (agent *Agent, err error) {
+func NewAgent(dataDir, port, dockerEndpoint, btClient string) (agent *Agent, err error) {
 	if err = initWorkspace(dataDir); err != nil {
 		return
 	}
@@ -61,21 +57,23 @@ func CreateAgent(dataDir, listenAddr, dockerEndpoint, btClient string) (agent *A
 
 	agent = &Agent{
 		DataDir:      dataDir,
-		ListenAddr:   listenAddr,
+		Port:         port,
 		DockerClient: dockerClient,
 		BTClient:     bt,
+		TaskPool:     make(map[string]chan struct{}),
 	}
-
 	return
 }
 
 func initWorkspace(path string) (err error) {
 	var paths []string
 	paths = append(paths, filepath.Join(path, "image"))
-	paths = append(paths, filepath.Join(path, "package", "image"))
-	paths = append(paths, filepath.Join(path, "package", "layer"))
-	paths = append(paths, filepath.Join(path, "torrent", "image"))
-	paths = append(paths, filepath.Join(path, "torrent", "layer"))
+	paths = append(paths, filepath.Join(path, "package"))
+	paths = append(paths, filepath.Join(path, "torrent"))
+	//	paths = append(paths, filepath.Join(path, "package", "image"))
+	//	paths = append(paths, filepath.Join(path, "package", "layer"))
+	//	paths = append(paths, filepath.Join(path, "torrent", "image"))
+	//	paths = append(paths, filepath.Join(path, "torrent", "layer"))
 
 	for _, p := range paths {
 		if err = os.MkdirAll(p, 644); err != nil {
@@ -88,16 +86,43 @@ func initWorkspace(path string) (err error) {
 
 func (a *Agent) ImageTarExist(id string) (exist bool, path string, err error) {
 	path = filepath.Join(a.DataDir, "image", id+".tar")
-	exist, err = util.FileExist(path)
+	exist, err = utils.FileExist(path)
 	return
 }
 
-func (a *Agent) TorrentExist(id string, mode string) (exist bool, path string, err error) {
-	if mode == p2p.ImageMode {
-		path = filepath.Join(a.DataDir, "torrent", "image", id+".torrent")
-	} else {
-		path = filepath.Join(a.DataDir, "torrent", "layer", id+".torrent")
+func (a *Agent) TorrentExist(id string, typee string) (exist bool, path string, err error) {
+	switch typee {
+	case "image":
+		path = filepath.Join(a.DataDir, "torrent", "image_"+id+".torrent")
+	case "layer":
+		path = filepath.Join(a.DataDir, "torrent", "layer_"+id+".torrent")
+	case "metadata":
+		path = filepath.Join(a.DataDir, "torrent", "metadata_"+id+".torrent")
 	}
-	exist, err = util.FileExist(path)
+	exist, err = utils.FileExist(path)
+	return
+}
+
+func (a *Agent) PoolAdd(key string) (c chan struct{}, err error) {
+	a.Lock()
+	defer a.Unlock()
+
+	if c, exists := a.TaskPool[key]; exists {
+		return c, errors.New("task is already in progress")
+	}
+
+	c = make(chan struct{})
+	a.TaskPool[key] = c
+	return
+}
+
+func (a *Agent) PoolDelete(key string) {
+	a.Lock()
+	defer a.Unlock()
+
+	if c, exists := a.TaskPool[key]; exists {
+		close(c)
+		delete(a.TaskPool, key)
+	}
 	return
 }

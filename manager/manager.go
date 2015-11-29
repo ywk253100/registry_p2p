@@ -168,22 +168,22 @@ func (m *Manager) TorrentExist(id string, typee string) (exist bool, path string
 	return
 }
 
-func (m *Manager) TaskExist(id string, mode string) (exist bool, path string, err error) {
-	if mode == p2p.ImageMode {
-		path = filepath.Join(m.DataDir, "task", "image", id+".torrent")
-	} else {
-		path = filepath.Join(m.DataDir, "task", "layer", id+".tar.gz")
-	}
-	exist, err = utils.FileExist(path)
+//func (m *Manager) TaskExist(id string, mode string) (exist bool, path string, err error) {
+//	if mode == p2p.ImageMode {
+//		path = filepath.Join(m.DataDir, "task", "image", id+".torrent")
+//	} else {
+//		path = filepath.Join(m.DataDir, "task", "layer", id+".tar.gz")
+//	}
+//	exist, err = utils.FileExist(path)
 
-	return
-}
+//	return
+//}
 
-func (m *Manager) MetadataExist(id string) (exist bool, path string, err error) {
-	path = filepath.Join(m.DataDir, "metadata", id)
-	exist, err = utils.FileExist(path)
-	return
-}
+//func (m *Manager) MetadataExist(id string) (exist bool, path string, err error) {
+//	path = filepath.Join(m.DataDir, "metadata", id)
+//	exist, err = utils.FileExist(path)
+//	return
+//}
 
 func (m *Manager) PoolAdd(key string) (c chan struct{}, err error) {
 	m.Lock()
