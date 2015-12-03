@@ -1,10 +1,34 @@
 package agent
 
-type DownloadTask struct {
-	ImageName    string
-	ImageID      string
-	TmpDir       string
-	ImageTarPath string
-	Torrents     map[string]string
-	Mode         string
+import (
+	p2p "registry_p2p"
+)
+
+import (
+	"encoding/json"
+	"io"
+	"io/ioutil"
+)
+
+type Task struct {
+	ImageID   string      `json:"id"`
+	ImageName string      `json:"name"`
+	Mode      string      `json:"mode"`
+	Items     []*p2p.Item `json:"items"`
+}
+
+func NewTask(r io.Reader) (task *Task, err error) {
+
+	b, err := ioutil.ReadAll(r)
+	if err != nil {
+		return
+	}
+
+	task = &Task{}
+
+	if err = json.Unmarshal(b, task); err != nil {
+		return
+	}
+
+	return
 }

@@ -32,6 +32,7 @@ func (b *Batch) Schedule(imageID, imageName, mode string, items []*p2p.Item, hos
 	}
 
 	data, err := json.Marshal(image)
+
 	if err != nil {
 		return
 	}
@@ -48,6 +49,10 @@ func (b *Batch) Schedule(imageID, imageName, mode string, items []*p2p.Item, hos
 	for _, ready := range readys {
 		<-ready
 	}
+
+	cond.L.Lock()
+	cond.Signal()
+	cond.L.Unlock()
 
 	return
 }
@@ -73,7 +78,7 @@ func post(url string, payload io.Reader, cond *sync.Cond, ratio int, ready chan 
 
 	u = u + "download"
 
-	resp, err := http.Post(url, "application/json", payload)
+	resp, err := http.Post(u, "application/json", payload)
 	if err != nil {
 		log.Printf("post to %s error: %s", url, err.Error())
 		return

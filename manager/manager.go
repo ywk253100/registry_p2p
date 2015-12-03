@@ -7,7 +7,6 @@ import (
 	"net"
 	"os"
 	"path/filepath"
-	p2p "registry_p2p"
 	"registry_p2p/bittorrent"
 	sch "registry_p2p/manager/scheduler"
 	"registry_p2p/utils"
@@ -47,8 +46,8 @@ func NewManager(dataDir, port, dockerEndpoint, btClient, scheduler string, track
 
 	var bt bittorrent.BitTorrent
 
-	if btClient == "anacrolix" {
-		bt, err = bittorrent.NewAnacrolix(filepath.Join(dataDir, "package"))
+	if btClient == "builtin" {
+		bt, err = bittorrent.NewBuiltin(filepath.Join(dataDir, "package"))
 		if err != nil {
 			return
 		}

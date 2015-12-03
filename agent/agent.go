@@ -39,8 +39,8 @@ func NewAgent(dataDir, port, dockerEndpoint, btClient string) (agent *Agent, err
 
 	var bt bittorrent.BitTorrent
 
-	if btClient == "anacrolix" {
-		bt, err = bittorrent.NewAnacrolix(filepath.Join(dataDir, "package"))
+	if btClient == "builtin" {
+		bt, err = bittorrent.NewBuiltin(filepath.Join(dataDir, "package"))
 		if err != nil {
 			return
 		}
@@ -100,6 +100,20 @@ func (a *Agent) TorrentExist(id string, typee string) (exist bool, path string, 
 		path = filepath.Join(a.DataDir, "torrent", "metadata_"+id+".torrent")
 	}
 	exist, err = utils.FileExist(path)
+	return
+}
+
+func (a *Agent) PackageExist(id string, typee string) (exist bool, path string, err error) {
+	switch typee {
+	case "image":
+		path = filepath.Join(a.DataDir, "package", "image_"+id+".tar.gz")
+	case "layer":
+		path = filepath.Join(a.DataDir, "package", "layer_"+id+".tar.gz")
+	case "metadata":
+		path = filepath.Join(a.DataDir, "package", "metadata_"+id+".tar.gz")
+	}
+	exist, err = utils.FileExist(path)
+
 	return
 }
 

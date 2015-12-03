@@ -33,7 +33,7 @@ func distributeHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	log.Printf("++distribte: %s", task.ImageName)
-	task.Writer.Write(fmt.Sprintf("++distribte: %s", task.ImageName))
+	task.Writer.Write(fmt.Sprintf("++distribte: %s \n", task.ImageName))
 
 	if err := manager.Distribute(mg, task); err != nil {
 		log.Printf("distribute error: %s", err.Error())
@@ -42,5 +42,5 @@ func distributeHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	log.Printf("--distribte: %s", task.ImageName)
-	task.Writer.Write(fmt.Sprintf("--distribte: %s", task.ImageName))
+	task.Writer.Write(fmt.Sprintf("--distribte: %s \n", task.ImageName))
 }

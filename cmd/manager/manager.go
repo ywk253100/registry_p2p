@@ -32,7 +32,7 @@ func main() {
 	dataDir := flag.String("d", "/p2p/", "data directory")
 	port := flag.String("p", "8000", "port")
 	dockerEndpoint := flag.String("e", "unix:///var/run/docker.sock", "docker daemon endpoint")
-	btClient := flag.String("b", "anacrolix", "bt client(anacrolix, ctorrent)")
+	btClient := flag.String("b", "builtin", "bt client(builtin, ctorrent)")
 	scheduler := flag.String("s", "batch", "distribution scheduler")
 
 	var ts trackers

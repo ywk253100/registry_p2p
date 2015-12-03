@@ -5,10 +5,10 @@ import (
 )
 
 type Image struct {
-	ID    string
-	Name  string
-	Mode  string
-	Items []*p2p.Item
+	ID    string      `json:"id"`
+	Name  string      `json:"name"`
+	Mode  string      `json:"mode"`
+	Items []*p2p.Item `json:"items"`
 }
 
 type Scheduler interface {
