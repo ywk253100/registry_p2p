@@ -88,7 +88,7 @@ func NewManager(dataDir, port, dockerEndpoint, btClient, scheduler string, track
 		BTClient:         bt,
 		Scheduler:        s,
 		Trackers:         trackers,
-		FileServerPrefix: "http://" + ip + ":" + port + "/",
+		FileServerPrefix: "http://" + ip + ":" + port + "/torrent/",
 		TaskPool:         make(map[string]chan struct{}),
 	}
 

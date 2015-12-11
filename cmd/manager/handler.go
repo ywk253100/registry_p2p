@@ -14,11 +14,7 @@ func registerHandler() {
 }
 
 func distributeHandler(w http.ResponseWriter, r *http.Request) {
-	startTime := time.Now()
-	defer func() {
-		endTime := time.Now()
-		log.Printf("[statistics] %s %s %d", startTime.Format("2006-01-02T15:04:05"), endTime.Format("2006-01-02T15:04:05"), endTime.Unix()-startTime.Unix())
-	}()
+	start := time.Now()
 
 	task, err := manager.NewTask(r.Body, r.RemoteAddr, w)
 	if err != nil {
@@ -43,4 +39,7 @@ func distributeHandler(w http.ResponseWriter, r *http.Request) {
 
 	log.Printf("--distribte: %s", task.ImageName)
 	task.Writer.Write(fmt.Sprintf("--distribte: %s \n", task.ImageName))
+
+	end := time.Now()
+	log.Printf("[statistics] %d %d %f", start.Unix(), end.Unix(), end.Sub(start).Seconds())
 }

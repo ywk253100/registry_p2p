@@ -3,7 +3,6 @@ package registry_p2p
 import (
 	docker "github.com/fsouza/go-dockerclient"
 	"io"
-	"log"
 )
 
 func PullImage(client *docker.Client, image, username, password, email string) error {
@@ -45,10 +44,7 @@ func GetImageIDByImageName(client *docker.Client, image string) (string, error) 
 	return im.ID, nil
 }
 
-func LoadImage(client *docker.Client, name string, r io.Reader) (err error) {
-
-	log.Printf("++load image %s", name)
-
+func LoadImage(client *docker.Client, r io.Reader) (err error) {
 	opts := docker.LoadImageOptions{
 		InputStream: r,
 	}
@@ -56,8 +52,6 @@ func LoadImage(client *docker.Client, name string, r io.Reader) (err error) {
 	if err = client.LoadImage(opts); err != nil {
 		return
 	}
-
-	log.Printf("--load image %s", name)
 
 	return
 }

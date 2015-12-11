@@ -46,7 +46,7 @@ func NewTask(r io.Reader, owner string, w io.Writer) (task *Task, err error) {
 	}
 
 	if len(task.Mode) == 0 {
-		task.Mode = p2p.LayerMode
+		task.Mode = p2p.MODE_IMAGE
 	}
 
 	task.Writer = utils.NewFlushWriter(w)

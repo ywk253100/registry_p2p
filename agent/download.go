@@ -1,13 +1,13 @@
 package agent
 
 import (
-	"compress/gzip"
 	"fmt"
 	"io"
 	"log"
 	"net/http"
 	"os"
 	p2p "registry_p2p"
+	"time"
 )
 
 func Download(ag *Agent, task *Task) (path string, err error) {
@@ -24,56 +24,32 @@ image:
 	}
 	defer ag.PoolDelete(task.Mode + "_" + task.ImageName)
 
-	exist, path, err := ag.ImageTarExist(task.ImageID)
-	if err != nil {
-		return
-	}
-
-	if exist {
-		//TODO if exists, seed for others
-		log.Printf("image tar already exists: %s", task.ImageName)
-		return
-	}
-
+	start := time.Now()
 	log.Printf("++download: %s", task.ImageName)
 	packagePaths, err := download(ag, task.Items)
 	if err != nil {
 		return
 	}
 	log.Printf("--download: %s", task.ImageName)
+	end := time.Now()
+	log.Printf("[statistics_download] %d %d %f", start.Unix(), end.Unix(), end.Sub(start).Seconds())
 
-	log.Printf("++create image tar: %s", task.ImageName)
-	if task.Mode == "image" {
-		//decompress
-		packageFile, err := os.Open(packagePaths[0])
+	if task.Mode == p2p.MODE_LAYER {
+		start := time.Now()
+		log.Printf("++assemble: %s", task.ImageName)
+		_, path, err = ag.ImageTarExist(task.ImageID)
 		if err != nil {
-			return "", err
+			return
 		}
-		defer packageFile.Close()
-
-		gr, err := gzip.NewReader(packageFile)
-		if err != nil {
-			return "", err
-		}
-		defer gr.Close()
-
-		imageTarFile, err := os.Create(path)
-		if err != nil {
-			return "", err
-		}
-		defer imageTarFile.Close()
-
-		if _, err = io.Copy(imageTarFile, gr); err != nil {
-			os.Remove(path)
-			return "", err
-		}
-
-	} else {
 		if err = Assemble(packagePaths, path); err != nil {
 			return "", err
 		}
+		log.Printf("--assemble: %s", task.ImageName)
+		end := time.Now()
+		log.Printf("[statistics_download] %d %d %f", start.Unix(), end.Unix(), end.Sub(start).Seconds())
+	} else {
+		path = packagePaths[0]
 	}
-	log.Printf("--create image tar: %s", task.ImageName)
 
 	return
 }
@@ -106,18 +82,21 @@ func download(ag *Agent, items []*p2p.Item) (paths []string, err error) {
 			log.Printf("--download torrent: %s", item.URL)
 
 			ag.PoolDelete("torrent_" + item.Type + "_" + item.ID)
+		} else {
+			log.Printf("torrent already exist: %s", item.URL)
 		}
 
-		packageExist, packagePath, err := ag.PackageExist(item.ID, item.Type)
+		_, packagePath, err := ag.PackageExist(item.ID, item.Type)
 		if err != nil {
 			return nil, err
 		}
 		paths = append(paths, packagePath)
 
-		if packageExist {
-			continue
-		}
+		//		if packageExist {
+		//			continue
+		//		}
 
+		log.Printf("++download package: %s", packagePath)
 		c := make(chan error)
 		result[item.URL] = c
 		configs := make(map[string]string)
@@ -127,6 +106,8 @@ func download(ag *Agent, items []*p2p.Item) (paths []string, err error) {
 			c <- err
 			if err != nil {
 				os.Remove(packagePath)
+			} else {
+				log.Printf("--download package: %s", packagePath)
 			}
 		}(packagePath, torrentPath, c)
 	}
@@ -147,6 +128,10 @@ func downloadTorrent(url, path string) (err error) {
 		return
 	}
 	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		return fmt.Errorf("[ERROR]download torrent %s error: %s", url, resp.Status)
+	}
 
 	file, err := os.Create(path)
 	if err != nil {

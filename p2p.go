@@ -1,8 +1,8 @@
 package registry_p2p
 
 const (
-	ImageMode string = "image"
-	LayerMode string = "layer"
+	MODE_IMAGE string = "image"
+	MODE_LAYER string = "layer"
 )
 
 type Item struct {

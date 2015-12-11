@@ -67,6 +67,7 @@ func (b *Builtin) Download(path, torrentPath string, configs map[string]string) 
 		if t.Length() == t.BytesCompleted() {
 			break
 		}
+
 		time.Sleep(time.Second * 1)
 	}
 

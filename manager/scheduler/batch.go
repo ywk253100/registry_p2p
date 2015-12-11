@@ -6,13 +6,15 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"os"
 	p2p "registry_p2p"
+	"strconv"
 	"strings"
 	"sync"
 )
 
-const (
-	ratio int = 2
+var (
+	ratio int = 120
 )
 
 type Batch struct {
@@ -24,6 +26,13 @@ func NewBatch() (batch *Batch) {
 }
 
 func (b *Batch) Schedule(imageID, imageName, mode string, items []*p2p.Item, hosts []string) (err error) {
+	//TODO remove
+	r := os.Getenv("ratio")
+	ratio, err = strconv.Atoi(r)
+	if err != nil {
+		return
+	}
+
 	image := &Image{
 		ID:    imageID,
 		Name:  imageName,
@@ -39,11 +48,17 @@ func (b *Batch) Schedule(imageID, imageName, mode string, items []*p2p.Item, hos
 
 	cond := sync.NewCond(new(sync.Mutex))
 
+	var wg sync.WaitGroup
+	wg.Add(len(hosts))
+
 	var readys []chan bool
 	for _, host := range hosts {
 		ready := make(chan bool)
 		readys = append(readys, ready)
-		go post(host, bytes.NewReader(data), cond, ratio, ready)
+		go func(url string, data []byte, cond *sync.Cond, ratio int, ready chan bool) {
+			defer wg.Done()
+			post(host, bytes.NewReader(data), cond, ratio, ready)
+		}(host, data, cond, ratio, ready)
 	}
 
 	for _, ready := range readys {
@@ -53,6 +68,8 @@ func (b *Batch) Schedule(imageID, imageName, mode string, items []*p2p.Item, hos
 	cond.L.Lock()
 	cond.Signal()
 	cond.L.Unlock()
+
+	wg.Wait()
 
 	return
 }
@@ -64,7 +81,7 @@ func post(url string, payload io.Reader, cond *sync.Cond, ratio int, ready chan 
 	cond.Wait()
 	cond.L.Unlock()
 
-	log.Printf("++++post: %s", url)
+	log.Printf("++post: %s", url)
 
 	u := url
 
@@ -89,7 +106,7 @@ func post(url string, payload io.Reader, cond *sync.Cond, ratio int, ready chan 
 		return
 	}
 
-	log.Printf("--------post: %s", url)
+	log.Printf("--post: %s", url)
 
 	for i := 0; i < ratio; i++ {
 		cond.L.Lock()
