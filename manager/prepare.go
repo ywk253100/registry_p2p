@@ -113,7 +113,7 @@ image:
 				}
 			} else {
 				log.Printf("image tar exist: %s", task.ImageName)
-				task.Writer.Write(fmt.Sprintf("image tar exist: %s", task.ImageName))
+				task.Writer.Write(fmt.Sprintf("image tar exist: %s \n", task.ImageName))
 				imageTarFile, err = os.Open(imageTarPath)
 				if err != nil {
 					return err
@@ -128,7 +128,7 @@ image:
 				}
 				defer packageFile.Close()
 
-				log.Printf("++compress: %s", task.ImageName)
+				log.Printf("++compress: %s \n", task.ImageName)
 				task.Writer.Write(fmt.Sprintf("++compress: %s\n", task.ImageName))
 				if err = TarCompress(imageTarFile, nil, packageFile, item.Type); err != nil {
 					os.Remove(packagePath)

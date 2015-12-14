@@ -11,7 +11,7 @@ import (
 )
 
 func Load(client *docker.Client, path, mode string) (err error) {
-	bufSize := 1024 * 1024
+	bufSize := 1024 * 1024 * 10
 	var r io.Reader
 
 	file, err := os.Open(path)

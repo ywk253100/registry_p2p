@@ -46,7 +46,7 @@ image:
 		}
 		log.Printf("--assemble: %s", task.ImageName)
 		end := time.Now()
-		log.Printf("[statistics_download] %d %d %f", start.Unix(), end.Unix(), end.Sub(start).Seconds())
+		log.Printf("[statistics_assemble] %d %d %f", start.Unix(), end.Unix(), end.Sub(start).Seconds())
 	} else {
 		path = packagePaths[0]
 	}

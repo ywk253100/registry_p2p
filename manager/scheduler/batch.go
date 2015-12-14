@@ -57,7 +57,7 @@ func (b *Batch) Schedule(imageID, imageName, mode string, items []*p2p.Item, hos
 		readys = append(readys, ready)
 		go func(url string, data []byte, cond *sync.Cond, ratio int, ready chan bool) {
 			defer wg.Done()
-			post(host, bytes.NewReader(data), cond, ratio, ready)
+			post(url, bytes.NewReader(data), cond, ratio, ready)
 		}(host, data, cond, ratio, ready)
 	}
 
@@ -65,9 +65,11 @@ func (b *Batch) Schedule(imageID, imageName, mode string, items []*p2p.Item, hos
 		<-ready
 	}
 
-	cond.L.Lock()
-	cond.Signal()
-	cond.L.Unlock()
+	for i := 0; i < ratio; i++ {
+		cond.L.Lock()
+		cond.Signal()
+		cond.L.Unlock()
+	}
 
 	wg.Wait()
 
