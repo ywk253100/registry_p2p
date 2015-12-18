@@ -6,7 +6,8 @@ const (
 )
 
 type Item struct {
-	ID   string
-	Type string //image, layer or metadata
-	URL  string
+	ID       string
+	ParentID string
+	Type     string //layer or layer_meta
+	URL      string
 }

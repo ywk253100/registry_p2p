@@ -14,6 +14,7 @@ type Task struct {
 	ImageID   string      `json:"id"`
 	ImageName string      `json:"name"`
 	Mode      string      `json:"mode"`
+	URL       string      `json:"url"`
 	Items     []*p2p.Item `json:"items"`
 }
 

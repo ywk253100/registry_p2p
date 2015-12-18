@@ -25,18 +25,21 @@ func NewBatch() (batch *Batch) {
 	return
 }
 
-func (b *Batch) Schedule(imageID, imageName, mode string, items []*p2p.Item, hosts []string) (err error) {
+func (b *Batch) Schedule(imageID, imageName, mode, url string, items []*p2p.Item, hosts []string) (err error) {
 	//TODO remove
 	r := os.Getenv("ratio")
-	ratio, err = strconv.Atoi(r)
-	if err != nil {
-		return
+	if len(r) != 0 {
+		ratio, err = strconv.Atoi(r)
+		if err != nil {
+			return
+		}
 	}
 
 	image := &Image{
 		ID:    imageID,
 		Name:  imageName,
 		Mode:  mode,
+		URL:   url,
 		Items: items,
 	}
 

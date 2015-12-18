@@ -8,9 +8,6 @@ import (
 	"time"
 )
 
-type tagId map[string]string
-type repositories map[string]tagId
-
 func registerHandler() {
 	http.HandleFunc("/download", downloadHandler)
 }
@@ -34,46 +31,32 @@ func downloadHandler(w http.ResponseWriter, r *http.Request) {
 
 	//TODO seed for others
 	//image already exists
-	if imageExist {
-		log.Printf("image already exists: %s", task.ImageName)
-		return
-	}
-
-	var path string
-
-	if task.Mode == p2p.MODE_LAYER {
-		imageTarExist, imageTarPath, err := ag.ImageTarExist(task.ImageID)
+	if !imageExist {
+		//downloadStart := time.Now()
+		results, err := agent.Download(ag, task)
 		if err != nil {
 			http.Error(w, err.Error(), 500)
 			log.Println(err.Error())
 			return
 		}
+		//downloadEnd := time.Now()
+		//log.Printf("[statistics_download] %d %d %f", downloadStart.Unix(), downloadEnd.Unix(), downloadEnd.Sub(downloadStart).Seconds())
 
-		if imageTarExist {
-			path = imageTarPath
-			goto load
+		//loadStart := time.Now()
+
+		if err = agent.Load(ag, results); err != nil {
+			http.Error(w, err.Error(), 500)
+			log.Println(err.Error())
+			return
 		}
-	}
 
-	path, err = agent.Download(ag, task)
-	if err != nil {
-		http.Error(w, err.Error(), 500)
-		log.Println(err.Error())
-		return
-	}
+		//loadEnd := time.Now()
 
-load:
-	start := time.Now()
-	log.Printf("++load image: %s", task.ImageName)
-	if err = agent.Load(ag.DockerClient, path, task.Mode); err != nil {
-		http.Error(w, err.Error(), 500)
-		log.Println(err.Error())
-		return
-	}
-	log.Printf("--load image: %s", task.ImageName)
-	end := time.Now()
+		//log.Printf("[statistics_load] %d %d %f", loadStart.Unix(), loadEnd.Unix(), loadEnd.Sub(loadStart).Seconds())
 
-	log.Printf("[statistics_load] %d %d %f", start.Unix(), end.Unix(), end.Sub(start).Seconds())
+	} else {
+		log.Printf("image already exists: %s", task.ImageName)
+	}
 
 	totalEnd := time.Now()
 	log.Printf("[statistics_success] %d %d %f", totalStart.Unix(), totalEnd.Unix(), totalEnd.Sub(totalStart).Seconds())

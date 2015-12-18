@@ -78,3 +78,16 @@ func GetLayerIDs(client *docker.Client, name string) (ids []string, err error) {
 	}
 	return
 }
+
+func Inspect(client *docker.Client, name string) (image *docker.Image, err error) {
+	image, err = client.InspectImage(name)
+	return
+}
+
+func GetParentID(client *docker.Client, id string) (parentID string, err error) {
+	image, err := Inspect(client, id)
+	if err == nil {
+		parentID = image.Parent
+	}
+	return
+}

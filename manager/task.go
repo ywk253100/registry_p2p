@@ -21,6 +21,8 @@ type Task struct {
 
 	Owner string
 
+	URL string
+
 	State       string
 	AgentStates map[string]string
 	Items       []*p2p.Item

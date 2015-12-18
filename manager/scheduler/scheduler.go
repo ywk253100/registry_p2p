@@ -9,8 +9,9 @@ type Image struct {
 	Name  string      `json:"name"`
 	Mode  string      `json:"mode"`
 	Items []*p2p.Item `json:"items"`
+	URL   string      `json:"url"`
 }
 
 type Scheduler interface {
-	Schedule(imageID, imageName, mode string, items []*p2p.Item, hosts []string) error
+	Schedule(imageID, imageName, mode, url string, items []*p2p.Item, hosts []string) error
 }

@@ -11,8 +11,9 @@ import (
 	"path/filepath"
 	p2p "registry_p2p"
 	"registry_p2p/bittorrent"
-	"strings"
+	"strconv"
 	"sync"
+	"time"
 
 	docker "github.com/fsouza/go-dockerclient"
 )
@@ -21,22 +22,6 @@ type tagId map[string]string
 type repositories map[string]tagId
 
 func Prepare(mg *Manager, task *Task) (err error) {
-
-	kind := task.Mode
-image:
-	c, err := mg.PoolAdd(kind + "_" + task.ImageName)
-	if err != nil {
-		if c != nil {
-			log.Printf("task is already in progress: %s", kind+"_"+task.ImageName)
-			task.Writer.Write(fmt.Sprintf("task is already in progress: %s", kind+"_"+task.ImageName))
-			<-c
-			goto image
-		} else {
-			return err
-		}
-	}
-	defer mg.PoolDelete(kind + "_" + task.ImageName)
-
 	log.Printf("++pull: %s", task.ImageName)
 	task.Writer.Write(fmt.Sprintf("++pull: %s\n", task.ImageName))
 	if err = Pull(mg.DockerClient, task.ImageName, task.Username, task.Password, task.Email); err != nil {
@@ -52,226 +37,321 @@ image:
 
 	task.ImageID = id
 
-	if task.Mode == "image" {
-		task.Items = append(task.Items, &p2p.Item{
-			ID:   task.ImageID,
-			Type: "image",
-			URL:  mg.FileServerPrefix + "image_" + task.ImageID + ".torrent",
-		})
+	if task.Mode == p2p.MODE_IMAGE {
+		return prepareForImage(mg, task)
 	} else {
-		ids, err := p2p.GetLayerIDs(mg.DockerClient, task.ImageName)
+		return prepareForLayer(mg, task)
+	}
+
+	return
+}
+
+func prepareForImage(mg *Manager, task *Task) (err error) {
+
+	task.URL = mg.FileServerPrefix + "image_" + task.ImageID + ".torrent"
+
+image:
+	packageExist, packagePath, err := mg.PackageExist(task.ImageID, "image")
+	if err != nil {
+		return
+	}
+
+	if !packageExist {
+
+		c, err := mg.PoolAdd("image" + "_" + task.ImageID)
+		if err != nil {
+			if c != nil {
+				log.Printf("image is being exported by other progress, please wait: %s", task.ImageName)
+				task.Writer.Write(fmt.Sprintf("image is being exported by other progress, please wait: %s \n", task.ImageName))
+				<-c
+				goto image
+			} else {
+				return err
+			}
+		}
+		defer mg.PoolDelete("image" + "_" + task.ImageName)
+
+		f, err := os.Create(packagePath)
 		if err != nil {
 			return err
 		}
-		for _, id := range ids {
-			task.Items = append(task.Items, &p2p.Item{
-				ID:   id,
-				Type: "layer",
-				URL:  mg.FileServerPrefix + "layer_" + id + ".torrent",
-			})
+
+		gw := gzip.NewWriter(f)
+
+		log.Printf("++save image: %s", task.ImageName)
+		task.Writer.Write(fmt.Sprintf("++save image: %s \n", task.ImageName))
+		if err = Save(mg.DockerClient, task.ImageName, gw); err != nil {
+			return err
 		}
+		gw.Close()
+		f.Close()
+
+		task.Writer.Write(fmt.Sprintf("--save image: %s \n", task.ImageName))
+		log.Printf("--save image: %s", task.ImageName)
+	} else {
+		task.Writer.Write(fmt.Sprintf("skip save image: %s \n", task.ImageName))
+		log.Printf("skip save image: %s", task.ImageName)
+	}
+
+	torrentExist, torrentPath, err := mg.TorrentExist(task.ImageID, "image")
+	if err != nil {
+		return
+	}
+
+	if !torrentExist {
+		log.Printf("++create torrent: %s", task.ImageName)
+		task.Writer.Write(fmt.Sprintf("++create torrent: %s \n", task.ImageName))
+		if err = CreateTorrent(mg.BTClient, packagePath, torrentPath, mg.Trackers); err != nil {
+			return err
+		}
+		task.Writer.Write(fmt.Sprintf("--create torrent: %s \n", task.ImageName))
+		log.Printf("--create torrent: %s", task.ImageName)
+	} else {
+		task.Writer.Write(fmt.Sprintf("skip create torrent: %s \n", task.ImageName))
+		log.Printf("skip create torrent: %s", task.ImageName)
+	}
+
+	config := make(map[string]string)
+	config["target"] = "manager"
+
+	log.Printf("++load to bt client: %s", task.ImageName)
+	task.Writer.Write(fmt.Sprintf("++load to bt client: %s \n", task.ImageName))
+	if err = Download(mg.BTClient, packagePath, torrentPath, config); err != nil {
+		return
+	}
+	task.Writer.Write(fmt.Sprintf("--load to bt client: %s \n", task.ImageName))
+	log.Printf("--load to bt client: %s", task.ImageName)
+
+	return
+}
+
+func prepareForLayer(mg *Manager, task *Task) (err error) {
+	id := task.ImageID
+	parentID, err := p2p.GetParentID(mg.DockerClient, id)
+
+	task.Items = append(task.Items, &p2p.Item{
+		ID:       id,
+		ParentID: parentID,
+		Type:     "layer_meta",
+		URL:      mg.FileServerPrefix + "layer_meta_" + id + ".torrent",
+	})
+
+	for len(parentID) != 0 {
+		id = parentID
+		parentID, err = p2p.GetParentID(mg.DockerClient, id)
+
 		task.Items = append(task.Items, &p2p.Item{
-			ID:   task.ImageID,
-			Type: "metadata",
-			URL:  mg.FileServerPrefix + "metadata_" + task.ImageID + ".torrent",
+			ID:       id,
+			ParentID: parentID,
+			Type:     "layer",
+			URL:      mg.FileServerPrefix + "layer_" + id + ".torrent",
 		})
 	}
 
-	var wg sync.WaitGroup
-	wg.Add(len(task.Items))
+	pExist := true
 
 	for _, item := range task.Items {
-		packageExist, packagePath, err := mg.PackageExist(item.ID, item.Type)
+		packageExist, _, err := mg.PackageExist(item.ID, item.Type)
 		if err != nil {
 			return err
 		}
 
 		if !packageExist {
-			imageTarExist, imageTarPath, err := mg.ImageTarExist(task.ImageID)
+			pExist = false
+			break
+		}
+	}
+
+	if !pExist {
+
+		dir := filepath.Join(os.TempDir(), strconv.Itoa(int(time.Now().Unix())))
+		if err = os.Mkdir(dir, 644); err != nil {
+			return err
+		}
+		defer os.RemoveAll(dir)
+
+		path := filepath.Join(dir, task.ImageID+".tar")
+		f, err := os.Create(path)
+		if err != nil {
+			return err
+		}
+
+		log.Printf("++save image: %s", task.ImageName)
+		task.Writer.Write(fmt.Sprintf("++save image: %s \n", task.ImageName))
+		if err = Save(mg.DockerClient, task.ImageName, f); err != nil {
+			return err
+		}
+		f.Close()
+		task.Writer.Write(fmt.Sprintf("--save image: %s \n", task.ImageName))
+		log.Printf("--save image: %s", task.ImageName)
+
+		for _, item := range task.Items {
+		layer:
+			packageExist, packagePath, err := mg.PackageExist(item.ID, item.Type)
 			if err != nil {
 				return err
 			}
-			var imageTarFile *os.File
-			if !imageTarExist {
-				imageTarFile, err = os.Create(imageTarPath)
+
+			if !packageExist {
+				c, err := mg.PoolAdd(item.Type + "_" + item.ID)
 				if err != nil {
-					return err
-				}
-				defer imageTarFile.Close()
-
-				log.Printf("++save: %s", task.ImageName)
-				task.Writer.Write(fmt.Sprintf("++save: %s\n", task.ImageName))
-				if err = Save(mg.DockerClient, task.ImageName, imageTarFile); err != nil {
-					os.Remove(imageTarPath)
-					return err
-				}
-				log.Printf("--save: %s", task.ImageName)
-				task.Writer.Write(fmt.Sprintf("--save: %s\n", task.ImageName))
-
-				if _, err = imageTarFile.Seek(0, 0); err != nil {
-					return err
-				}
-			} else {
-				log.Printf("image tar exist: %s", task.ImageName)
-				task.Writer.Write(fmt.Sprintf("image tar exist: %s \n", task.ImageName))
-				imageTarFile, err = os.Open(imageTarPath)
-				if err != nil {
-					return err
-				}
-				defer imageTarFile.Close()
-			}
-
-			if item.Type == "image" {
-				packageFile, err := os.Create(packagePath)
-				if err != nil {
-					return err
-				}
-				defer packageFile.Close()
-
-				log.Printf("++compress: %s \n", task.ImageName)
-				task.Writer.Write(fmt.Sprintf("++compress: %s\n", task.ImageName))
-				if err = TarCompress(imageTarFile, nil, packageFile, item.Type); err != nil {
-					os.Remove(packagePath)
-					return err
-				}
-				log.Printf("--compress: %s", task.ImageName)
-				task.Writer.Write(fmt.Sprintf("--compress: %s\n", task.ImageName))
-
-			} else {
-				tr := tar.NewReader(imageTarFile)
-				for {
-					header, err := tr.Next()
-					if err != nil {
-						if err == io.EOF {
-							break
-						}
+					if c != nil {
+						log.Printf("layer is being extract by other progress, please wait: %s", task.ImageName)
+						task.Writer.Write(fmt.Sprintf("layer is being extract by other progress, please wait: %s \n", task.ImageName))
+						<-c
+						goto layer
+					} else {
 						return err
 					}
-
-					switch header.Typeflag {
-					case tar.TypeDir:
-						id := strings.TrimRight(header.Name, string(filepath.Separator))
-
-					layer:
-						c, err := mg.PoolAdd("layer_" + id)
-						if err != nil {
-							if c != nil {
-								<-c
-								log.Printf("task is already in progress: %s", "layer_"+id)
-								task.Writer.Write(fmt.Sprintf("task is already in progress: %s", "layer_"+id))
-								goto layer
-							} else {
-								return err
-							}
-						}
-						defer mg.PoolDelete("layer_" + id)
-
-						packageExist, packagePath, err := mg.PackageExist(id, "layer")
-						if err != nil {
-							return err
-						}
-						if packageExist {
-							continue
-						}
-
-						packageFile, err := os.Create(packagePath)
-						if err != nil {
-							return err
-						}
-						defer packageFile.Close()
-
-						log.Printf("++compress: layer %s", id)
-						task.Writer.Write(fmt.Sprintf("++compress: layer %s\n", id))
-						if err = TarCompress(tr, nil, packageFile, "layer"); err != nil {
-							os.Remove(packagePath)
-							return err
-						}
-						log.Printf("--compress: layer %s", id)
-						task.Writer.Write(fmt.Sprintf("--compress: layer %s\n", id))
-
-					case tar.TypeReg:
-						if header.Name == "repositories" {
-						metadata:
-							c, err := mg.PoolAdd("metadata_" + id)
-							if err != nil {
-								if c != nil {
-									<-c
-									log.Printf("task is already in progress: %s", "metadata_"+id)
-									task.Writer.Write(fmt.Sprintf("task is already in progress: %s", "metadata_"+id))
-									goto metadata
-								} else {
-									return err
-								}
-							}
-							defer mg.PoolDelete("metadata_" + id)
-
-							packageExist, packagePath, err := mg.PackageExist(task.ImageID, "metadata")
-							if err != nil {
-								return err
-							}
-							if packageExist {
-								continue
-							}
-
-							packageFile, err := os.Create(packagePath)
-							if err != nil {
-								return err
-							}
-							defer packageFile.Close()
-
-							log.Printf("++compress: metadata %s", id)
-							task.Writer.Write(fmt.Sprintf("++compress: metadata %s\n", id))
-							if err = TarCompress(tr, header, packageFile, "metadata"); err != nil {
-								os.Remove(packagePath)
-								return err
-							}
-							log.Printf("--compress: metadata %s", id)
-							task.Writer.Write(fmt.Sprintf("--compress: metadata %s\n", id))
-
-						}
-
-					default:
-						return fmt.Errorf("unsupported type flag")
-					}
 				}
-			}
-		} else {
-			log.Printf("package exist: %s", item.Type+"_"+item.ID)
-			task.Writer.Write(fmt.Sprintf("package exist: %s\n", item.Type+"_"+item.ID))
-		}
+				defer mg.PoolDelete(item.Type + "_" + item.ID)
 
+				log.Printf("++extract layer: %s", item.Type+"_"+item.ID)
+				task.Writer.Write(fmt.Sprintf("++extract layer: %s \n", item.Type+"_"+item.ID))
+				if err = extract(path, packagePath, item.ID, item.Type); err != nil {
+					return err
+				}
+				task.Writer.Write(fmt.Sprintf("--extract layer: %s \n", item.Type+"_"+item.ID))
+				log.Printf("--extract layer: %s", item.Type+"_"+item.ID)
+			} else {
+				task.Writer.Write(fmt.Sprintf("skip extract layer: %s \n", item.Type+"_"+item.ID))
+				log.Printf("skip extract layer: %s", item.Type+"_"+item.ID)
+			}
+		}
+	}
+
+	var wg sync.WaitGroup
+	wg.Add(len(task.Items))
+
+	config := make(map[string]string)
+	config["target"] = "manager"
+	for _, item := range task.Items {
 		torrentExist, torrentPath, err := mg.TorrentExist(item.ID, item.Type)
 		if err != nil {
 			return err
 		}
 
+		packageExist, packagePath, err := mg.PackageExist(item.ID, item.Type)
+		if err != nil {
+			return err
+		}
+
 		if !torrentExist {
+
+			if !packageExist {
+				return fmt.Errorf("[ERROR]package not exist: %s", packagePath)
+			}
+
 			log.Printf("++make torrent: %s", item.Type+"_"+item.ID)
-			task.Writer.Write(fmt.Sprintf("++make torrent: %s\n", item.Type+"_"+item.ID))
+			task.Writer.Write(fmt.Sprintf("++make torrent: %s \n", item.Type+"_"+item.ID))
 			if err = CreateTorrent(mg.BTClient, packagePath, torrentPath, mg.Trackers); err != nil {
-				os.Remove(torrentPath)
 				return err
 			}
+			task.Writer.Write(fmt.Sprintf("--make torrent: %s \n", item.Type+"_"+item.ID))
 			log.Printf("--make torrent: %s", item.Type+"_"+item.ID)
-			task.Writer.Write(fmt.Sprintf("--make torrent: %s\n", item.Type+"_"+item.ID))
-		} else {
-			log.Printf("torrent exist: %s", item.Type+"_"+item.ID)
-			task.Writer.Write(fmt.Sprintf("torrent exist: %s\n", item.Type+"_"+item.ID))
-		}
-		config := make(map[string]string)
-		config["target"] = "manager"
 
-		go func(path, torrentPath string) {
+		} else {
+			task.Writer.Write(fmt.Sprintf("skip make torrent: %s \n", item.Type+"_"+item.ID))
+			log.Printf("skip make torrent: %s", item.Type+"_"+item.ID)
+		}
+
+		log.Printf("++load to bt client: %s", item.Type+"_"+item.ID)
+		task.Writer.Write(fmt.Sprintf("++load to bt client: %s \n", item.Type+"_"+item.ID))
+		go func(path, torrentPath, typee, id string) {
 			defer wg.Done()
 			if err := Download(mg.BTClient, path, torrentPath, config); err != nil {
 				log.Printf("download err: %s", err.Error())
 				return
 			}
-		}(packagePath, torrentPath)
+			log.Printf("--load to bt client: %s", typee+"_"+id)
+			task.Writer.Write(fmt.Sprintf("--load to bt client: %s \n", typee+"_"+id))
+		}(packagePath, torrentPath, item.Type, item.ID)
 	}
 
 	wg.Wait()
 
+	return
+}
+
+func extract(tarPath, packagePath, id, typee string) (err error) {
+	pf, err := os.Create(packagePath)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		pf.Close()
+		if err != nil {
+			os.Remove(packagePath)
+		}
+	}()
+
+	gw := gzip.NewWriter(pf)
+	defer gw.Close()
+
+	tw := tar.NewWriter(gw)
+	defer tw.Close()
+
+	tf, err := os.Open(tarPath)
+	if err != nil {
+		return
+	}
+	defer tf.Close()
+
+	tr := tar.NewReader(tf)
+
+	for {
+		header, err := tr.Next()
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
+
+			return err
+		}
+
+		if header.Name[:len(header.Name)-1] == id {
+			if err = tw.WriteHeader(header); err != nil {
+				return err
+			}
+
+			for i := 0; i < 3; i++ {
+				header, err := tr.Next()
+				if err != nil {
+					return err
+				}
+
+				if err = tw.WriteHeader(header); err != nil {
+					return err
+				}
+
+				if _, err = io.Copy(tw, tr); err != nil {
+					return err
+				}
+			}
+
+			//layer_meta
+			if typee == "layer_meta" {
+				for {
+					header, err := tr.Next()
+					if err != nil {
+						return err
+					}
+
+					if header.Name == "repositories" {
+						if err = tw.WriteHeader(header); err != nil {
+							return err
+						}
+
+						if _, err = io.Copy(tw, tr); err != nil {
+							return err
+						}
+
+						break
+					}
+				}
+			}
+		}
+	}
 	return
 }
 

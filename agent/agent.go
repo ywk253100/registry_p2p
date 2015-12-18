@@ -67,7 +67,7 @@ func NewAgent(dataDir, port, dockerEndpoint, btClient string) (agent *Agent, err
 
 func initWorkspace(path string) (err error) {
 	var paths []string
-	paths = append(paths, filepath.Join(path, "image"))
+	//paths = append(paths, filepath.Join(path, "image"))
 	paths = append(paths, filepath.Join(path, "package"))
 	paths = append(paths, filepath.Join(path, "torrent"))
 	//	paths = append(paths, filepath.Join(path, "package", "image"))
@@ -84,11 +84,11 @@ func initWorkspace(path string) (err error) {
 	return
 }
 
-func (a *Agent) ImageTarExist(id string) (exist bool, path string, err error) {
-	path = filepath.Join(a.DataDir, "image", id+".tar")
-	exist, err = utils.FileExist(path)
-	return
-}
+//func (a *Agent) ImageTarExist(id string) (exist bool, path string, err error) {
+//	path = filepath.Join(a.DataDir, "image", id+".tar")
+//	exist, err = utils.FileExist(path)
+//	return
+//}
 
 func (a *Agent) TorrentExist(id string, typee string) (exist bool, path string, err error) {
 	switch typee {
@@ -96,8 +96,8 @@ func (a *Agent) TorrentExist(id string, typee string) (exist bool, path string, 
 		path = filepath.Join(a.DataDir, "torrent", "image_"+id+".torrent")
 	case "layer":
 		path = filepath.Join(a.DataDir, "torrent", "layer_"+id+".torrent")
-	case "metadata":
-		path = filepath.Join(a.DataDir, "torrent", "metadata_"+id+".torrent")
+	case "layer_meta":
+		path = filepath.Join(a.DataDir, "torrent", "layer_meta_"+id+".torrent")
 	}
 	exist, err = utils.FileExist(path)
 	return
@@ -109,8 +109,8 @@ func (a *Agent) PackageExist(id string, typee string) (exist bool, path string, 
 		path = filepath.Join(a.DataDir, "package", "image_"+id+".tar.gz")
 	case "layer":
 		path = filepath.Join(a.DataDir, "package", "layer_"+id+".tar.gz")
-	case "metadata":
-		path = filepath.Join(a.DataDir, "package", "metadata_"+id+".tar.gz")
+	case "layer_meta":
+		path = filepath.Join(a.DataDir, "package", "layer_meta_"+id+".tar.gz")
 	}
 	exist, err = utils.FileExist(path)
 

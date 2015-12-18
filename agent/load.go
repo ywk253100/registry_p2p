@@ -2,34 +2,35 @@ package agent
 
 import (
 	"bufio"
-	"compress/gzip"
-	docker "github.com/fsouza/go-dockerclient"
-	"io"
-	//"io"
+	"log"
 	"os"
 	p2p "registry_p2p"
 )
 
-func Load(client *docker.Client, path, mode string) (err error) {
+func Load(ag *Agent, results []*DownloadResult) (err error) {
 	bufSize := 1024 * 1024 * 10
-	var r io.Reader
 
-	file, err := os.Open(path)
-	if err != nil {
-		return
-	}
-	defer file.Close()
-	r = bufio.NewReaderSize(file, bufSize)
+	for _, result := range results {
+		if result.Err != nil {
+			err := <-result.Err
+			if err != nil {
+				return err
+			}
+		}
 
-	if mode == p2p.MODE_IMAGE {
-		r, err = gzip.NewReader(r)
+		log.Printf("++load: %s", result.PackagePath)
+		file, err := os.Open(result.PackagePath)
 		if err != nil {
 			return err
 		}
-	}
+		defer file.Close()
 
-	if err = p2p.LoadImage(client, r); err != nil {
-		return
+		r := bufio.NewReaderSize(file, bufSize)
+
+		if err = p2p.LoadImage(ag.DockerClient, r); err != nil {
+			return err
+		}
+		log.Printf("--load: %s", result.PackagePath)
 	}
 
 	return

@@ -7,118 +7,122 @@ import (
 	"net/http"
 	"os"
 	p2p "registry_p2p"
-	"time"
 )
 
-func Download(ag *Agent, task *Task) (path string, err error) {
-image:
-	c, err := ag.PoolAdd(task.Mode + "_" + task.ImageName)
-	if err != nil {
-		if c != nil {
-			log.Printf("task is already in progress: %s", task.Mode+"_"+task.ImageName)
-			<-c
-			goto image
-		} else {
-			return
-		}
-	}
-	defer ag.PoolDelete(task.Mode + "_" + task.ImageName)
+type DownloadResult struct {
+	Err         chan error
+	PackagePath string
+}
 
-	start := time.Now()
-	log.Printf("++download: %s", task.ImageName)
-	packagePaths, err := download(ag, task.Items)
+func Download(ag *Agent, task *Task) (results []*DownloadResult, err error) {
+	if task.Mode == p2p.MODE_IMAGE {
+		return downloadForImage(ag, task)
+	}
+
+	return downloadForLayer(ag, task)
+}
+
+func downloadForImage(ag *Agent, task *Task) (results []*DownloadResult, err error) {
+	result, err := download(ag, task.ImageID, "image", task.URL)
 	if err != nil {
 		return
 	}
-	log.Printf("--download: %s", task.ImageName)
-	end := time.Now()
-	log.Printf("[statistics_download] %d %d %f", start.Unix(), end.Unix(), end.Sub(start).Seconds())
 
-	if task.Mode == p2p.MODE_LAYER {
-		start := time.Now()
-		log.Printf("++assemble: %s", task.ImageName)
-		_, path, err = ag.ImageTarExist(task.ImageID)
+	results = append(results, result)
+
+	return
+}
+
+func downloadForLayer(ag *Agent, task *Task) (results []*DownloadResult, err error) {
+	itemMap := make(map[string]*p2p.Item)
+
+	for _, item := range task.Items {
+		itemMap[item.ParentID] = item
+	}
+
+	id := ""
+	for {
+		item := itemMap[id]
+		if item == nil {
+			break
+		}
+
+		result, err := download(ag, item.ID, item.Type, item.URL)
 		if err != nil {
-			return
+			return nil, err
 		}
-		if err = Assemble(packagePaths, path); err != nil {
-			return "", err
-		}
-		log.Printf("--assemble: %s", task.ImageName)
-		end := time.Now()
-		log.Printf("[statistics_assemble] %d %d %f", start.Unix(), end.Unix(), end.Sub(start).Seconds())
-	} else {
-		path = packagePaths[0]
+		results = append(results, result)
+		id = item.ID
 	}
 
 	return
 }
 
-func download(ag *Agent, items []*p2p.Item) (paths []string, err error) {
-	result := make(map[string]chan error)
+func download(ag *Agent, id, typee, url string) (result *DownloadResult, err error) {
+	packageExist, packagePath, err := ag.PackageExist(id, typee)
+	if err != nil {
+		return
+	}
 
-	for _, item := range items {
-	torrent:
-		torrentExist, torrentPath, err := ag.TorrentExist(item.ID, item.Type)
-		if err != nil {
-			return nil, err
+	if packageExist {
+		log.Printf("skip download package: %s", typee+"_"+id)
+
+		result = &DownloadResult{
+			Err:         nil,
+			PackagePath: packagePath,
 		}
+		return
+	}
 
-		if !torrentExist {
-			c, err := ag.PoolAdd("torrent_" + item.Type + "_" + item.ID)
-			if err != nil {
-				if c != nil {
-					<-c
-					goto torrent
-				} else {
-					return nil, err
-				}
-			}
+torrent:
+	torrentExist, torrentPath, err := ag.TorrentExist(id, typee)
+	if err != nil {
+		return
+	}
 
-			log.Printf("++download torrent: %s", item.URL)
-			if err = downloadTorrent(item.URL, torrentPath); err != nil {
+	if !torrentExist {
+		c, err := ag.PoolAdd("torrent_" + typee + "_" + id)
+		if err != nil {
+			if c != nil {
+				log.Printf("torrent is being downloaded by other progress, please wait: %s", typee+"_"+id)
+				<-c
+				goto torrent
+			} else {
 				return nil, err
 			}
-			log.Printf("--download torrent: %s", item.URL)
-
-			ag.PoolDelete("torrent_" + item.Type + "_" + item.ID)
-		} else {
-			log.Printf("torrent already exist: %s", item.URL)
 		}
 
-		_, packagePath, err := ag.PackageExist(item.ID, item.Type)
-		if err != nil {
+		log.Printf("++download torrent: %s", typee+"_"+id)
+
+		if err = downloadTorrent(url, torrentPath); err != nil {
 			return nil, err
 		}
-		paths = append(paths, packagePath)
+		log.Printf("--download torrent: %s", typee+"_"+id)
 
-		//		if packageExist {
-		//			continue
-		//		}
-
-		log.Printf("++download package: %s", packagePath)
-		c := make(chan error)
-		result[item.URL] = c
-		configs := make(map[string]string)
-		configs["target"] = "agent"
-		go func(packagePath, torrentPath string, c chan error) {
-			err = ag.BTClient.Download(packagePath, torrentPath, configs)
-			c <- err
-			if err != nil {
-				os.Remove(packagePath)
-			} else {
-				log.Printf("--download package: %s", packagePath)
-			}
-		}(packagePath, torrentPath, c)
+		ag.PoolDelete("torrent_" + typee + "_" + id)
+	} else {
+		log.Printf("skip download torrent: %s", typee+"_"+id)
 	}
 
-	for url, c := range result {
-		if e := <-c; e != nil {
-			return nil, fmt.Errorf("[ERROR]download %s error: %s", url, e.Error())
+	log.Printf("++download package: %s", typee+"_"+id)
+	c := make(chan error)
+	configs := make(map[string]string)
+	configs["target"] = "agent"
+	go func(packagePath, torrentPath string, c chan error, typee, id string) {
+		err = ag.BTClient.Download(packagePath, torrentPath, configs)
+		if err != nil {
+			os.Remove(packagePath)
+		} else {
+			log.Printf("--download package: %s", typee+"_"+id)
 		}
-		delete(result, url)
-	}
 
+		c <- err
+	}(packagePath, torrentPath, c, typee, id)
+
+	result = &DownloadResult{
+		Err:         c,
+		PackagePath: packagePath,
+	}
 	return
 }
 
