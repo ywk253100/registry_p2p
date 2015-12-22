@@ -13,6 +13,7 @@ func registerHandler() {
 	http.Handle("/torrent/", http.FileServer(http.Dir(mg.DataDir)))
 }
 
+//TODO fix bug: image with two tag
 func distributeHandler(w http.ResponseWriter, r *http.Request) {
 	start := time.Now()
 

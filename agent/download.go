@@ -7,6 +7,14 @@ import (
 	"net/http"
 	"os"
 	p2p "registry_p2p"
+	"sync"
+	"time"
+)
+
+//TODO remove
+var (
+	DownloadEnd int64 = 0
+	Lock              = &sync.Mutex{}
 )
 
 type DownloadResult struct {
@@ -47,6 +55,7 @@ func downloadForLayer(ag *Agent, task *Task) (results []*DownloadResult, err err
 			break
 		}
 
+		//TODO check if layer exists in docker using inspect API
 		result, err := download(ag, item.ID, item.Type, item.URL)
 		if err != nil {
 			return nil, err
@@ -115,6 +124,14 @@ torrent:
 		} else {
 			log.Printf("--download package: %s", typee+"_"+id)
 		}
+
+		//TODO remove
+		end := time.Now().Unix()
+		Lock.Lock()
+		if end > DownloadEnd {
+			DownloadEnd = end
+		}
+		Lock.Unlock()
 
 		c <- err
 	}(packagePath, torrentPath, c, typee, id)

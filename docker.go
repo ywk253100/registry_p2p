@@ -91,3 +91,13 @@ func GetParentID(client *docker.Client, id string) (parentID string, err error) 
 	}
 	return
 }
+
+func Tag(client *docker.Client, id, repo, tag string) (err error) {
+	opts := docker.TagImageOptions{
+		Repo: repo,
+		Tag:  tag,
+	}
+
+	err = client.TagImage(id, opts)
+	return
+}

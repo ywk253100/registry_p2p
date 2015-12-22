@@ -3,7 +3,6 @@ package manager
 import (
 	"archive/tar"
 	"compress/gzip"
-	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -127,18 +126,12 @@ image:
 
 func prepareForLayer(mg *Manager, task *Task) (err error) {
 	id := task.ImageID
-	parentID, err := p2p.GetParentID(mg.DockerClient, id)
 
-	task.Items = append(task.Items, &p2p.Item{
-		ID:       id,
-		ParentID: parentID,
-		Type:     "layer_meta",
-		URL:      mg.FileServerPrefix + "layer_meta_" + id + ".torrent",
-	})
-
-	for len(parentID) != 0 {
-		id = parentID
-		parentID, err = p2p.GetParentID(mg.DockerClient, id)
+	for len(id) != 0 {
+		parentID, err := p2p.GetParentID(mg.DockerClient, id)
+		if err != nil {
+			return err
+		}
 
 		task.Items = append(task.Items, &p2p.Item{
 			ID:       id,
@@ -146,76 +139,139 @@ func prepareForLayer(mg *Manager, task *Task) (err error) {
 			Type:     "layer",
 			URL:      mg.FileServerPrefix + "layer_" + id + ".torrent",
 		})
+
+		id = parentID
 	}
 
-	pExist := true
+	allLayerExist := true
 
 	for _, item := range task.Items {
 		packageExist, _, err := mg.PackageExist(item.ID, item.Type)
 		if err != nil {
 			return err
 		}
-
 		if !packageExist {
-			pExist = false
+			allLayerExist = false
 			break
 		}
 	}
 
-	if !pExist {
+	if !allLayerExist {
 
 		dir := filepath.Join(os.TempDir(), strconv.Itoa(int(time.Now().Unix())))
 		if err = os.Mkdir(dir, 644); err != nil {
 			return err
 		}
-		defer os.RemoveAll(dir)
+		//defer os.RemoveAll(dir)
 
 		path := filepath.Join(dir, task.ImageID+".tar")
 		f, err := os.Create(path)
 		if err != nil {
 			return err
 		}
+		defer f.Close()
 
 		log.Printf("++save image: %s", task.ImageName)
 		task.Writer.Write(fmt.Sprintf("++save image: %s \n", task.ImageName))
 		if err = Save(mg.DockerClient, task.ImageName, f); err != nil {
 			return err
 		}
-		f.Close()
+		if err = f.Sync(); err != nil {
+			return err
+		}
 		task.Writer.Write(fmt.Sprintf("--save image: %s \n", task.ImageName))
 		log.Printf("--save image: %s", task.ImageName)
 
-		for _, item := range task.Items {
+		if _, err = f.Seek(0, 0); err != nil {
+			return err
+		}
+
+		f.Close()
+
+		tf, err := os.Open(path)
+		if err != nil {
+			return err
+		}
+		defer tf.Close()
+
+		tr := tar.NewReader(tf)
+
+		for {
+			header, err := tr.Next()
+			if err != nil {
+				if err == io.EOF {
+					break
+				}
+
+				return err
+			}
+
+			if header.Typeflag != tar.TypeDir {
+				continue
+			}
+
+			id := header.Name[:len(header.Name)-1]
+
 		layer:
-			packageExist, packagePath, err := mg.PackageExist(item.ID, item.Type)
+			packageExist, packagePath, err := mg.PackageExist(id, "layer")
 			if err != nil {
 				return err
 			}
 
 			if !packageExist {
-				c, err := mg.PoolAdd(item.Type + "_" + item.ID)
+				c, err := mg.PoolAdd("layer_" + id)
 				if err != nil {
 					if c != nil {
-						log.Printf("layer is being extract by other progress, please wait: %s", task.ImageName)
-						task.Writer.Write(fmt.Sprintf("layer is being extract by other progress, please wait: %s \n", task.ImageName))
+						log.Printf("layer is being extract by other progress, please wait: %s", id)
+						task.Writer.Write(fmt.Sprintf("layer is being extract by other progress, please wait: %s \n", id))
 						<-c
 						goto layer
 					} else {
 						return err
 					}
 				}
-				defer mg.PoolDelete(item.Type + "_" + item.ID)
+				defer mg.PoolDelete("layer_" + id)
 
-				log.Printf("++extract layer: %s", item.Type+"_"+item.ID)
-				task.Writer.Write(fmt.Sprintf("++extract layer: %s \n", item.Type+"_"+item.ID))
-				if err = extract(path, packagePath, item.ID, item.Type); err != nil {
+				log.Printf("++extract layer: %s", id)
+				task.Writer.Write(fmt.Sprintf("++extract layer: %s \n", id))
+
+				pf, err := os.Create(packagePath)
+				if err != nil {
 					return err
 				}
-				task.Writer.Write(fmt.Sprintf("--extract layer: %s \n", item.Type+"_"+item.ID))
-				log.Printf("--extract layer: %s", item.Type+"_"+item.ID)
+
+				gw := gzip.NewWriter(pf)
+
+				tw := tar.NewWriter(gw)
+
+				if err = tw.WriteHeader(header); err != nil {
+					return err
+				}
+
+				for i := 0; i < 3; i++ {
+					header, err := tr.Next()
+					if err != nil {
+						return err
+					}
+
+					if err = tw.WriteHeader(header); err != nil {
+						return err
+					}
+
+					if _, err = io.Copy(tw, tr); err != nil {
+						return err
+					}
+				}
+
+				tw.Close()
+				gw.Close()
+				pf.Close()
+
+				task.Writer.Write(fmt.Sprintf("--extract layer: %s \n", id))
+				log.Printf("--extract layer: %s", id)
 			} else {
-				task.Writer.Write(fmt.Sprintf("skip extract layer: %s \n", item.Type+"_"+item.ID))
-				log.Printf("skip extract layer: %s", item.Type+"_"+item.ID)
+				task.Writer.Write(fmt.Sprintf("skip extract layer: %s \n", id))
+				log.Printf("skip extract layer: %s", id)
 			}
 		}
 	}
@@ -273,88 +329,6 @@ func prepareForLayer(mg *Manager, task *Task) (err error) {
 	return
 }
 
-func extract(tarPath, packagePath, id, typee string) (err error) {
-	pf, err := os.Create(packagePath)
-	if err != nil {
-		return err
-	}
-	defer func() {
-		pf.Close()
-		if err != nil {
-			os.Remove(packagePath)
-		}
-	}()
-
-	gw := gzip.NewWriter(pf)
-	defer gw.Close()
-
-	tw := tar.NewWriter(gw)
-	defer tw.Close()
-
-	tf, err := os.Open(tarPath)
-	if err != nil {
-		return
-	}
-	defer tf.Close()
-
-	tr := tar.NewReader(tf)
-
-	for {
-		header, err := tr.Next()
-		if err != nil {
-			if err == io.EOF {
-				break
-			}
-
-			return err
-		}
-
-		if header.Name[:len(header.Name)-1] == id {
-			if err = tw.WriteHeader(header); err != nil {
-				return err
-			}
-
-			for i := 0; i < 3; i++ {
-				header, err := tr.Next()
-				if err != nil {
-					return err
-				}
-
-				if err = tw.WriteHeader(header); err != nil {
-					return err
-				}
-
-				if _, err = io.Copy(tw, tr); err != nil {
-					return err
-				}
-			}
-
-			//layer_meta
-			if typee == "layer_meta" {
-				for {
-					header, err := tr.Next()
-					if err != nil {
-						return err
-					}
-
-					if header.Name == "repositories" {
-						if err = tw.WriteHeader(header); err != nil {
-							return err
-						}
-
-						if _, err = io.Copy(tw, tr); err != nil {
-							return err
-						}
-
-						break
-					}
-				}
-			}
-		}
-	}
-	return
-}
-
 func Pull(client *docker.Client, image, username, password, email string) (err error) {
 	if err = p2p.PullImage(client, image, username, password, email); err != nil {
 		return
@@ -366,58 +340,6 @@ func Save(client *docker.Client, image string, w io.Writer) (err error) {
 	if err = p2p.SaveImage(client, image, w); err != nil {
 		return err
 	}
-	return
-}
-
-func TarCompress(r io.Reader, header *tar.Header, w io.Writer, typee string) (err error) {
-	gw := gzip.NewWriter(w)
-	defer gw.Close()
-	switch typee {
-	case "image":
-		if _, err = io.Copy(gw, r); err != nil {
-			return
-		}
-		return
-	case "layer":
-		tw := tar.NewWriter(gw)
-		defer tw.Close()
-		tr, ok := r.(*tar.Reader)
-		if !ok {
-			return errors.New("r is not the tar.Reader type")
-		}
-
-		for i := 0; i < 3; i++ {
-			header, err := tr.Next()
-			if err != nil {
-				return err
-			}
-			if err = tw.WriteHeader(header); err != nil {
-				return err
-			}
-			if _, err = io.Copy(tw, tr); err != nil {
-				return err
-			}
-		}
-	case "metadata":
-		tw := tar.NewWriter(gw)
-		defer tw.Close()
-		tr, ok := r.(*tar.Reader)
-		if !ok {
-			return errors.New("r is not the tar.Reader type")
-		}
-		if err != nil {
-			return err
-		}
-		if err = tw.WriteHeader(header); err != nil {
-			return err
-		}
-		if _, err = io.Copy(tw, tr); err != nil {
-			return err
-		}
-	default:
-		return fmt.Errorf("unsupported type: %s", typee)
-	}
-
 	return
 }
 

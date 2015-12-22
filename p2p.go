@@ -8,6 +8,6 @@ const (
 type Item struct {
 	ID       string
 	ParentID string
-	Type     string //layer or layer_meta
+	Type     string //layer
 	URL      string
 }
