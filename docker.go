@@ -101,3 +101,18 @@ func Tag(client *docker.Client, id, repo, tag string) (err error) {
 	err = client.TagImage(id, opts)
 	return
 }
+
+func LayerExist(client *docker.Client, id string) (exist bool, err error) {
+	_, err = Inspect(client, id)
+
+	if err != nil {
+		if err == docker.ErrNoSuchImage {
+			err = nil
+		}
+		return
+	}
+
+	exist = true
+
+	return
+}

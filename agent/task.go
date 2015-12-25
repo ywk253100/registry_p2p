@@ -16,6 +16,7 @@ type Task struct {
 	Mode      string      `json:"mode"`
 	URL       string      `json:"url"`
 	Items     []*p2p.Item `json:"items"`
+	History   []string    `json:"history"`
 }
 
 func NewTask(r io.Reader) (task *Task, err error) {

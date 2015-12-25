@@ -1,12 +1,14 @@
 package agent
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"log"
 	"net/http"
 	"os"
 	p2p "registry_p2p"
+	"strings"
 	"sync"
 	"time"
 )
@@ -23,11 +25,20 @@ type DownloadResult struct {
 }
 
 func Download(ag *Agent, task *Task) (results []*DownloadResult, err error) {
-	if task.Mode == p2p.MODE_IMAGE {
+
+	switch task.Mode {
+	case p2p.MODE_IMAGE:
 		return downloadForImage(ag, task)
+	case p2p.MODE_LAYER:
+		return downloadForLayer(ag, task)
+	case p2p.MODE_MULTI_LAYER:
+		return downloadForMultiLayer(ag, task)
+	default:
+		err = errors.New("unsupportted task mode")
+		return
 	}
 
-	return downloadForLayer(ag, task)
+	return
 }
 
 func downloadForImage(ag *Agent, task *Task) (results []*DownloadResult, err error) {
@@ -62,6 +73,38 @@ func downloadForLayer(ag *Agent, task *Task) (results []*DownloadResult, err err
 		}
 		results = append(results, result)
 		id = item.ID
+	}
+
+	return
+}
+
+func downloadForMultiLayer(ag *Agent, task *Task) (results []*DownloadResult, err error) {
+	var beginId string
+
+	length := len(task.History)
+	for i := length - 1; i >= 0; i-- {
+		exist, err := p2p.LayerExist(ag.DockerClient, task.History[i])
+		if err != nil {
+			return nil, err
+		}
+
+		if !exist {
+			beginId = task.History[i]
+			break
+		}
+	}
+
+	if len(beginId) != 0 {
+		for _, item := range task.Items {
+			if strings.HasSuffix(item.ID, beginId) {
+				result, err := download(ag, item.ID, item.Type, item.URL)
+				if err != nil {
+					return nil, err
+				}
+				results = append(results, result)
+				break
+			}
+		}
 	}
 
 	return

@@ -27,6 +27,8 @@ type Task struct {
 	AgentStates map[string]string
 	Items       []*p2p.Item
 
+	History []string
+
 	Writer *utils.FlushWriter
 }
 

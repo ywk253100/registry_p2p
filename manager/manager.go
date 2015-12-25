@@ -114,16 +114,13 @@ func getIP() (ip string, err error) {
 
 func initWorkspace(path string) (err error) {
 	var paths []string
-	//paths = append(paths, filepath.Join(path, "image"))
-	paths = append(paths, filepath.Join(path, "package"))
-	paths = append(paths, filepath.Join(path, "torrent"))
-	//paths = append(paths, filepath.Join(path, "package", "image"))
-	//paths = append(paths, filepath.Join(path, "package", "layer"))
-	//paths = append(paths, filepath.Join(path, "torrent", "image"))
-	//paths = append(paths, filepath.Join(path, "torrent", "layer"))
-	//paths = append(paths, filepath.Join(path, "task", "image"))
-	//paths = append(paths, filepath.Join(path, "task", "layer"))
-	//paths = append(paths, filepath.Join(path, "metadata"))
+
+	paths = append(paths, filepath.Join(path, "package", "image"))
+	paths = append(paths, filepath.Join(path, "package", "layer"))
+	paths = append(paths, filepath.Join(path, "package", "multi_layer"))
+	paths = append(paths, filepath.Join(path, "torrent", "image"))
+	paths = append(paths, filepath.Join(path, "torrent", "layer"))
+	paths = append(paths, filepath.Join(path, "torrent", "multi_layer"))
 
 	for _, p := range paths {
 		if err = os.MkdirAll(p, 644); err != nil {
@@ -134,22 +131,14 @@ func initWorkspace(path string) (err error) {
 	return
 }
 
-//func (m *Manager) ImageTarExist(id string) (exist bool, path string, err error) {
-//	path = filepath.Join(m.DataDir, "image", id+".tar")
-//	exist, err = utils.FileExist(path)
-//	return
-//}
-
 func (m *Manager) PackageExist(id string, typee string) (exist bool, path string, err error) {
 	switch typee {
 	case "image":
-		path = filepath.Join(m.DataDir, "package", "image_"+id+".tar.gz")
+		path = filepath.Join(m.DataDir, "package", "image", id+".tar.gz")
 	case "layer":
-		path = filepath.Join(m.DataDir, "package", "layer_"+id+".tar.gz")
-		//	case "metadata":
-		//		path = filepath.Join(m.DataDir, "package", "metadata_"+id+".tar.gz")
-	case "layer_meta":
-		path = filepath.Join(m.DataDir, "package", "layer_meta_"+id+".tar.gz")
+		path = filepath.Join(m.DataDir, "package", "layer", id+".tar.gz")
+	case "multi_layer":
+		path = filepath.Join(m.DataDir, "package", "multi_layer", id+".tar.gz")
 	default:
 		err = errors.New("unsupport type")
 	}
@@ -161,37 +150,17 @@ func (m *Manager) PackageExist(id string, typee string) (exist bool, path string
 func (m *Manager) TorrentExist(id string, typee string) (exist bool, path string, err error) {
 	switch typee {
 	case "image":
-		path = filepath.Join(m.DataDir, "torrent", "image_"+id+".torrent")
+		path = filepath.Join(m.DataDir, "torrent", "image", id+".torrent")
 	case "layer":
-		path = filepath.Join(m.DataDir, "torrent", "layer_"+id+".torrent")
-		//	case "metadata":
-		//		path = filepath.Join(m.DataDir, "torrent", "metadata_"+id+".torrent")
-		//		path = filepath.Join(m.DataDir, "package", "metadata_"+id+".tar.gz")
-	case "layer_meta":
-		path = filepath.Join(m.DataDir, "torrent", "layer_meta_"+id+".torrent")
+		path = filepath.Join(m.DataDir, "torrent", "layer", id+".torrent")
+	case "multi_layer":
+		path = filepath.Join(m.DataDir, "torrent", "multi_layer", id+".torrent")
 	default:
 		err = errors.New("unsupport type")
 	}
 	exist, err = utils.FileExist(path)
 	return
 }
-
-//func (m *Manager) TaskExist(id string, mode string) (exist bool, path string, err error) {
-//	if mode == p2p.ImageMode {
-//		path = filepath.Join(m.DataDir, "task", "image", id+".torrent")
-//	} else {
-//		path = filepath.Join(m.DataDir, "task", "layer", id+".tar.gz")
-//	}
-//	exist, err = utils.FileExist(path)
-
-//	return
-//}
-
-//func (m *Manager) MetadataExist(id string) (exist bool, path string, err error) {
-//	path = filepath.Join(m.DataDir, "metadata", id)
-//	exist, err = utils.FileExist(path)
-//	return
-//}
 
 func (m *Manager) PoolAdd(key string) (c chan struct{}, err error) {
 	m.Lock()

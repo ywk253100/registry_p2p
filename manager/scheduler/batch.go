@@ -25,7 +25,7 @@ func NewBatch() (batch *Batch) {
 	return
 }
 
-func (b *Batch) Schedule(imageID, imageName, mode, url string, items []*p2p.Item, hosts []string) (err error) {
+func (b *Batch) Schedule(imageID, imageName, mode, url string, items []*p2p.Item, history []string, hosts []string) (err error) {
 	//TODO remove
 	r := os.Getenv("ratio")
 	if len(r) != 0 {
@@ -36,11 +36,12 @@ func (b *Batch) Schedule(imageID, imageName, mode, url string, items []*p2p.Item
 	}
 
 	image := &Image{
-		ID:    imageID,
-		Name:  imageName,
-		Mode:  mode,
-		URL:   url,
-		Items: items,
+		ID:      imageID,
+		Name:    imageName,
+		Mode:    mode,
+		URL:     url,
+		Items:   items,
+		History: history,
 	}
 
 	data, err := json.Marshal(image)

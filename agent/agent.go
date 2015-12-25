@@ -67,13 +67,12 @@ func NewAgent(dataDir, port, dockerEndpoint, btClient string) (agent *Agent, err
 
 func initWorkspace(path string) (err error) {
 	var paths []string
-	//paths = append(paths, filepath.Join(path, "image"))
-	paths = append(paths, filepath.Join(path, "package"))
-	paths = append(paths, filepath.Join(path, "torrent"))
-	//	paths = append(paths, filepath.Join(path, "package", "image"))
-	//	paths = append(paths, filepath.Join(path, "package", "layer"))
-	//	paths = append(paths, filepath.Join(path, "torrent", "image"))
-	//	paths = append(paths, filepath.Join(path, "torrent", "layer"))
+	paths = append(paths, filepath.Join(path, "package", "image"))
+	paths = append(paths, filepath.Join(path, "package", "layer"))
+	paths = append(paths, filepath.Join(path, "package", "multi_layer"))
+	paths = append(paths, filepath.Join(path, "torrent", "image"))
+	paths = append(paths, filepath.Join(path, "torrent", "layer"))
+	paths = append(paths, filepath.Join(path, "torrent", "multi_layer"))
 
 	for _, p := range paths {
 		if err = os.MkdirAll(p, 644); err != nil {
@@ -84,20 +83,14 @@ func initWorkspace(path string) (err error) {
 	return
 }
 
-//func (a *Agent) ImageTarExist(id string) (exist bool, path string, err error) {
-//	path = filepath.Join(a.DataDir, "image", id+".tar")
-//	exist, err = utils.FileExist(path)
-//	return
-//}
-
 func (a *Agent) TorrentExist(id string, typee string) (exist bool, path string, err error) {
 	switch typee {
 	case "image":
-		path = filepath.Join(a.DataDir, "torrent", "image_"+id+".torrent")
+		path = filepath.Join(a.DataDir, "torrent", "image", id+".torrent")
 	case "layer":
-		path = filepath.Join(a.DataDir, "torrent", "layer_"+id+".torrent")
-	case "layer_meta":
-		path = filepath.Join(a.DataDir, "torrent", "layer_meta_"+id+".torrent")
+		path = filepath.Join(a.DataDir, "torrent", "layer", id+".torrent")
+	case "multi_layer":
+		path = filepath.Join(a.DataDir, "torrent", "multi_layer", id+".torrent")
 	}
 	exist, err = utils.FileExist(path)
 	return
@@ -106,11 +99,11 @@ func (a *Agent) TorrentExist(id string, typee string) (exist bool, path string, 
 func (a *Agent) PackageExist(id string, typee string) (exist bool, path string, err error) {
 	switch typee {
 	case "image":
-		path = filepath.Join(a.DataDir, "package", "image_"+id+".tar.gz")
+		path = filepath.Join(a.DataDir, "package", "image", id+".tar.gz")
 	case "layer":
-		path = filepath.Join(a.DataDir, "package", "layer_"+id+".tar.gz")
-	case "layer_meta":
-		path = filepath.Join(a.DataDir, "package", "layer_meta_"+id+".tar.gz")
+		path = filepath.Join(a.DataDir, "package", "layer", id+".tar.gz")
+	case "multi_layer":
+		path = filepath.Join(a.DataDir, "package", "multi_layer", id+".tar.gz")
 	}
 	exist, err = utils.FileExist(path)
 
