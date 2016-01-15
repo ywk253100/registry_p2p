@@ -57,7 +57,7 @@ func (b *Batch) Schedule(imageID, imageName, mode, url string, items []*p2p.Item
 
 	var readys []chan bool
 	for _, host := range hosts {
-		ready := make(chan bool)
+		ready := make(chan bool, 1)
 		readys = append(readys, ready)
 		go func(url string, data []byte, cond *sync.Cond, ratio int, ready chan bool) {
 			defer wg.Done()

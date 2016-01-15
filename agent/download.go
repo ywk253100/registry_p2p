@@ -15,8 +15,8 @@ import (
 
 //TODO remove
 var (
-	DownloadEnd int64 = 0
-	Lock              = &sync.Mutex{}
+	DownloadEnd time.Time
+	Lock        = &sync.Mutex{}
 )
 
 type DownloadResult struct {
@@ -169,9 +169,9 @@ torrent:
 		}
 
 		//TODO remove
-		end := time.Now().Unix()
+		end := time.Now()
 		Lock.Lock()
-		if end > DownloadEnd {
+		if end.After(DownloadEnd) {
 			DownloadEnd = end
 		}
 		Lock.Unlock()

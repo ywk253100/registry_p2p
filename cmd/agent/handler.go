@@ -32,7 +32,7 @@ func downloadHandler(w http.ResponseWriter, r *http.Request) {
 	//TODO seed for others
 	//image already exists
 	if !imageExist {
-		downloadStart := time.Now().Unix()
+		downloadStart := time.Now()
 		results, err := agent.Download(ag, task)
 		if err != nil {
 			http.Error(w, err.Error(), 500)
@@ -49,17 +49,17 @@ func downloadHandler(w http.ResponseWriter, r *http.Request) {
 
 		downloadEnd := agent.DownloadEnd
 
-		loadEnd := time.Now().Unix()
+		loadEnd := time.Now()
 
-		log.Printf("[statistics_download] %d %d %d", downloadStart, downloadEnd, downloadEnd-downloadStart)
-		log.Printf("[statistics_load] %d %d %d", loadStart, loadEnd, loadEnd-loadStart)
+		log.Printf("[statistics_download] %d %d %f", downloadStart.Unix(), downloadEnd.Unix(), downloadEnd.Sub(downloadStart).Seconds())
+		log.Printf("[statistics_load] %d %d %f", loadStart.Unix(), loadEnd.Unix(), loadEnd.Sub(loadStart).Seconds())
 
 	} else {
 		log.Printf("image already exists: %s", task.ImageName)
 	}
 
 	totalEnd := time.Now()
-	log.Printf("[statistics_success] %d %d %d", totalStart.Unix(), totalEnd.Unix(), totalEnd.Unix()-totalStart.Unix())
+	log.Printf("[statistics_success] %d %d %f", totalStart.Unix(), totalEnd.Unix(), totalEnd.Sub(totalStart).Seconds())
 
 	return
 }

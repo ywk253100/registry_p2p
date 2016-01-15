@@ -9,34 +9,34 @@ import (
 	"time"
 )
 
-func Load(ag *Agent, task *Task, results []*DownloadResult) (loadStart int64, err error) {
-	loadStart = 0
+func Load(ag *Agent, task *Task, results []*DownloadResult) (loadStart time.Time, err error) {
+	var flag time.Time
 	bufSize := 1024 * 1024 * 10
 
 	for _, result := range results {
 		if result.Err != nil {
 			err := <-result.Err
 			if err != nil {
-				return 0, err
+				return loadStart, err
 			}
 		}
 
 		//TODO remove
-		if loadStart == 0 {
-			loadStart = time.Now().Unix()
+		if loadStart.Equal(flag) {
+			loadStart = time.Now()
 		}
 
 		log.Printf("++load: %s", result.PackagePath)
 		file, err := os.Open(result.PackagePath)
 		if err != nil {
-			return 0, err
+			return loadStart, err
 		}
 		defer file.Close()
 
 		r := bufio.NewReaderSize(file, bufSize)
 
 		if err = p2p.LoadImage(ag.DockerClient, r); err != nil {
-			return 0, err
+			return loadStart, err
 		}
 		log.Printf("--load: %s", result.PackagePath)
 	}
@@ -47,11 +47,13 @@ func Load(ag *Agent, task *Task, results []*DownloadResult) (loadStart int64, er
 
 	log.Printf("++tag: %s", task.ImageName)
 
-	strs := strings.Split(task.ImageName, ":")
-	repo := strs[0]
-	tag := ""
-	if len(strs[1]) != 0 {
-		tag = strs[1]
+	repo := task.ImageName
+	tag := "latest"
+
+	index := strings.LastIndex(task.ImageName, ":")
+	if index != -1 {
+		repo = task.ImageName[:index]
+		tag = task.ImageName[index+1:]
 	}
 
 	if err = p2p.Tag(ag.DockerClient, task.ImageID, repo, tag); err != nil {
